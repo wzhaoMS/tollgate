@@ -29,7 +29,9 @@ def test_end_to_end():
 
     # Scorer runs
     out = scoring.score_all()
-    assert len(out) == n_seed
+    with db.connect() as cx:
+        n_chokepoints = len(db.list_tickers(cx))
+    assert len(out) == n_chokepoints
     for r in out:
         assert r["overall"] in {"Buy", "Watch", "Pass", "Skip"}
 

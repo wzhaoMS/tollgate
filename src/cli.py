@@ -11,6 +11,7 @@ Commands:
     tweets      - harvest tweets from smart-money X accounts via nitter
     diffwatch   - snapshot customer-partner pages and flag changes
     score       - run the 11-step scoring engine over all chokepoints
+    candidates  - seed sub-$10B screen candidates + print their evidence-based score
     pairs       - print pair-trade candidates from current prices
     pairwatch   - persist pair-trade candidates to a watchlist
     consensus   - print true-vs-consensus state for a ticker
@@ -50,6 +51,7 @@ from . import (
     scoring,
     seed,
     seed_builtin,
+    seed_candidates,
     seed_signals,
     signal_feeds,
     source_health,
@@ -171,6 +173,49 @@ def cmd_diffwatch(args: list[str]) -> int:
 
 def cmd_score(args: list[str]) -> int:
     scoring.main()
+    return 0
+
+
+_STEP_LABELS = [
+    ("step_minus1", "crowd/trap"),
+    ("step_0", "adverse-sel"),
+    ("step_1", "evidence"),
+    ("step_2", "capacity"),
+    ("step_3", "substitution"),
+    ("step_4", "govt-backstop"),
+    ("step_5", "ma-floor"),
+    ("step_6", "insider"),
+    ("step_7", "liquidity"),
+    ("step_8", "catalyst"),
+    ("step_9", "time-to-truth"),
+    ("step_10", "cap-structure"),
+]
+
+
+def cmd_candidates(args: list[str]) -> int:
+    """Seed the sub-$10B screen candidates and print their evidence-based score."""
+    p = argparse.ArgumentParser(prog="candidates")
+    p.add_argument("--no-seed", action="store_true", help="skip seeding, just score existing rows")
+    ns = p.parse_args(args)
+    if not ns.no_seed:
+        n = seed_candidates.import_builtin_candidates()
+        print(f"seeded/refreshed {n} candidate chokepoint row(s)\n")
+    tickers = [r["ticker"] for r in seed_candidates.BUILTIN_CANDIDATES]
+    db.init()
+    with db.connect() as cx:
+        for ticker in tickers:
+            row = cx.execute("SELECT * FROM chokepoints WHERE ticker = ?", (ticker,)).fetchone()
+            if not row:
+                continue
+            score = scoring.score_row(cx, {k: row[k] for k in row.keys()})
+            mcap = row["market_cap_usd"]
+            mcap_s = f"${mcap/1e9:.2f}B" if mcap else "n/a"
+            print(f"{ticker:<6} {score['overall']:<6} cap={mcap_s:<8} "
+                  f"info_edge={score['info_edge']:<7} indep_verify={score['independent_verification']}")
+            steps = " ".join(
+                f"{label}={score[key]}" for key, label in _STEP_LABELS
+            )
+            print(f"        {steps}\n")
     return 0
 
 
@@ -723,6 +768,7 @@ COMMANDS = {
     "tweets": cmd_tweets,
     "diffwatch": cmd_diffwatch,
     "score": cmd_score,
+    "candidates": cmd_candidates,
     "pairs": cmd_pairs,
     "pairwatch": cmd_pairwatch,
     "consensus": cmd_consensus,
