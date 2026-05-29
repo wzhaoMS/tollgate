@@ -35,7 +35,8 @@ def cmd_score() -> int:
     scoring.main()
     return 0
 
-enrich() -> int:
+
+def cmd_enrich() -> int:
     filing_text.main()
     return 0
 
@@ -58,8 +59,7 @@ COMMANDS = {
     "init": cmd_init,
     "seed": cmd_seed,
     "harvest": cmd_harvest,
-    "enrich": cmd_enrich
-    "harvest": cmd_harvest,
+    "enrich": cmd_enrich,
     "score": cmd_score,
     "digest": cmd_digest,
     "all": cmd_all,
