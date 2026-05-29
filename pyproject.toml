@@ -21,6 +21,7 @@ dependencies = [
     "lxml>=5.2",
     "streamlit>=1.40",
     "pandas>=2.2",
+    "altair>=5.0",
 ]
 
 [project.optional-dependencies]

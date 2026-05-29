@@ -52,7 +52,9 @@ _FORM4 = """<?xml version="1.0"?>
   <issuer><issuerTradingSymbol>TST</issuerTradingSymbol></issuer>
   <reportingOwner>
     <reportingOwnerId><rptOwnerName>DOE JANE</rptOwnerName></reportingOwnerId>
-    <reportingOwnerRelationship><isDirector>1</isDirector><isOfficer>0</isOfficer></reportingOwnerRelationship>
+        <reportingOwnerRelationship>
+            <isDirector>1</isDirector><isOfficer>1</isOfficer><officerTitle>Chief Technology Officer</officerTitle>
+        </reportingOwnerRelationship>
   </reportingOwner>
   <nonDerivativeTable>
     <nonDerivativeTransaction>
@@ -75,6 +77,7 @@ def test_parse_form4_extracts_transaction():
     assert t["ticker"] == "TST"
     assert t["filer_name"] == "DOE JANE"
     assert "director" in (t["relation"] or "")
+    assert "Chief Technology Officer" in (t["relation"] or "")
     assert t["txn_code"] == "P"
     assert t["shares"] == 1000.0
     assert t["price"] == 12.5

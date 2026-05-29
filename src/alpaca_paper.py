@@ -65,7 +65,7 @@ def sync(action_log: bool = True) -> dict:
         # Fall back to internal paper module
         return _sync_internal()
     open_now = {p["symbol"]: p for p in list_positions()}
-    scores = {r["ticker"]: r["overall"] for r in scoring.score_all()}
+    scores = {r["ticker"]: r["overall"] for r in scoring.latest_scores()}
     for ticker, overall in scores.items():
         if overall == "Buy" and ticker not in open_now:
             o = submit_market_order(ticker, 1, "buy")
@@ -91,7 +91,7 @@ def _sync_internal() -> dict:
     """
     results = {"opened": [], "closed": [], "skipped": []}
     held = {p["ticker"] for p in paper.list_positions()}
-    scores = {r["ticker"]: r["overall"] for r in scoring.score_all()}
+    scores = {r["ticker"]: r["overall"] for r in scoring.latest_scores()}
     # Look up last close per ticker from the contamination table
     last_close: dict[str, float] = {}
     with db.connect() as cx:

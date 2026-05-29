@@ -16,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -45,6 +46,24 @@ def load_latest_scores() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60)
+def load_status() -> dict:
+    with db.connect() as cx:
+        latest_score = cx.execute("SELECT MAX(scored_at) FROM scores").fetchone()[0]
+        latest_run = cx.execute(
+            "SELECT command || ':' || status || ' @ ' || COALESCE(finished_at, started_at) "
+            "FROM pipeline_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        evidence_count = cx.execute("SELECT COUNT(*) FROM evidence_log").fetchone()[0]
+        full_bodies = cx.execute("SELECT COUNT(*) FROM filings WHERE length(summary) >= 500").fetchone()[0]
+    return {
+        "latest_score": latest_score or "never",
+        "latest_run": latest_run[0] if latest_run and latest_run[0] else "none",
+        "evidence_count": evidence_count,
+        "full_bodies": full_bodies,
+    }
+
+
+@st.cache_data(ttl=60)
 def load_contamination() -> pd.DataFrame:
     with db.connect() as cx:
         return pd.read_sql_query("SELECT * FROM contamination", cx)
@@ -54,9 +73,20 @@ def load_contamination() -> pd.DataFrame:
 def load_filings(limit: int = 50) -> pd.DataFrame:
     with db.connect() as cx:
         return pd.read_sql_query(
-            "SELECT form, title, filed_at, url, keyword_hits FROM filings "
+            "SELECT ticker, form, title, filed_at, url, keyword_hits FROM filings "
             "ORDER BY discovered_at DESC LIMIT ?",
             cx, params=(limit,),
+        )
+
+
+@st.cache_data(ttl=60)
+def load_filings_for_ticker(ticker: str, limit: int = 100) -> pd.DataFrame:
+    with db.connect() as cx:
+        return pd.read_sql_query(
+            "SELECT form, title, filed_at, url, keyword_hits FROM filings "
+            "WHERE ticker = ? ORDER BY filed_at DESC, discovered_at DESC LIMIT ?",
+            cx,
+            params=(ticker, limit),
         )
 
 
@@ -146,6 +176,7 @@ tw = load_tweets()
 prices_long = load_prices()
 positions = load_positions()
 insider = load_insider()
+status = load_status()
 
 # Header KPIs
 buys = int((sc["overall"] == "Buy").sum()) if not sc.empty else 0
@@ -158,6 +189,12 @@ c2.metric("🟢 Buy", buys)
 c3.metric("🟡 Watch", watches)
 c4.metric("🔴 Pass (contaminated)", passes)
 c5.metric("⚪ Skip", skips)
+
+s1, s2, s3, s4 = st.columns(4)
+s1.metric("Latest score", status["latest_score"])
+s2.metric("Latest run", status["latest_run"])
+s3.metric("Evidence rows", status["evidence_count"])
+s4.metric("Full filing bodies", status["full_bodies"])
 
 # Section 1
 st.header("1) Chokepoint master + crowd contamination")
@@ -188,7 +225,10 @@ st.header("2) Top movers (normalized close, last 90d)")
 if prices_long.empty or ct.empty:
     st.info("Run `py -m src.cli prices`.")
 else:
-    pivot = prices_long.pivot_table(index="date", columns="ticker", values="close", aggfunc="last")
+    plot_prices = prices_long.copy()
+    plot_prices["date"] = pd.to_datetime(plot_prices["date"], errors="coerce")
+    plot_prices = plot_prices.dropna(subset=["date", "close"])
+    pivot = plot_prices.pivot_table(index="date", columns="ticker", values="close", aggfunc="last")
     valid = [t for t in pivot.columns if pivot[t].dropna().shape[0] >= 5]
     pivot = pivot[valid]
     default_top = (
@@ -210,13 +250,30 @@ else:
         upper = float(np.nanpercentile(normed.values, clip_pct))
         normed = normed.clip(upper=upper)
         if log_scale:
-            normed = normed.apply(lambda c: np.log10(c.replace(0, np.nan)))
+            normed = normed.where(normed > 0)
+            normed = normed.apply(np.log10)
+        normed = normed.replace([np.inf, -np.inf], np.nan).dropna(how="all")
         with a:
             st.caption(
                 f"{'Log10 of normalized' if log_scale else 'Normalized'} close (base=100). "
                 f"Outliers clipped at p{clip_pct}={upper:.1f}."
             )
-            st.line_chart(normed)
+            if normed.empty:
+                st.info("No plottable price data for the selected tickers.")
+            else:
+                chart_df = normed.reset_index().melt("date", var_name="ticker", value_name="value").dropna()
+                chart = (
+                    alt.Chart(chart_df)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("date:T", title="Date"),
+                        y=alt.Y("value:Q", title="Log10 normalized close" if log_scale else "Normalized close"),
+                        color=alt.Color("ticker:N", title="Ticker"),
+                        tooltip=["ticker:N", "date:T", alt.Tooltip("value:Q", format=".2f")],
+                    )
+                    .properties(height=360)
+                )
+                st.altair_chart(chart, width="stretch")
     else:
         with a:
             st.info("Pick at least one ticker.")
@@ -278,11 +335,16 @@ if not cp.empty:
     a, b, c = st.columns(3)
     with a:
         st.markdown("**Filings**")
-        sub = fl[fl["title"].str.contains(pick, case=False, na=False)] if not fl.empty else pd.DataFrame()
+        sub = load_filings_for_ticker(pick)
         if sub.empty:
             st.caption(f"No filings hit for {pick}")
         else:
-            st.dataframe(sub, width="stretch", height=240)
+            st.dataframe(
+                sub,
+                width="stretch",
+                height=240,
+                column_config={"url": st.column_config.LinkColumn("link")},
+            )
     with b:
         st.markdown("**Tweet mentions**")
         sub = tw[tw["tickers"].str.contains(pick, na=False)] if not tw.empty else pd.DataFrame()

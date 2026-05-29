@@ -66,6 +66,26 @@ def test_insider_ignores_stale_transactions(tmpdb):
     assert scoring._insider_signal(tmpdb, "TST", lookback_days=180) == "unknown"
 
 
+def test_insider_prefers_key_executive_activity(tmpdb):
+    _add_insider(tmpdb, "P", 100_000, filer="A")
+    tmpdb.execute(
+        "INSERT INTO insider_txns "
+        "(accession_no, ticker, filer_name, relation, txn_date, txn_code, dollar_amount) "
+        "VALUES ('acc-key', 'TST', 'CEO PERSON', 'Chief Executive Officer', date('now'), 'S', 900000)"
+    )
+    tmpdb.commit()
+    assert scoring._insider_signal(tmpdb, "TST") == "fail"
+
+
+def test_insider_watch_on_upcoming_option_expiry_without_transactions(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO insider_option_events (ticker, insider_name, expiry_date, status) "
+        "VALUES ('TST', 'CEO PERSON', date('now', '+30 days'), 'open')"
+    )
+    tmpdb.commit()
+    assert scoring._insider_signal(tmpdb, "TST") == "watch"
+
+
 # ---- liquidity ------------------------------------------------------------
 
 def _add_prices(cx, closes_vols, ticker="TST"):
@@ -106,7 +126,7 @@ def test_govt_unknown_without_evidence(tmpdb):
 
 def test_govt_pass_from_curated_text(tmpdb):
     row = _chokepoint(tmpdb, notes="Received a CHIPS Act preliminary memorandum of terms.")
-    assert scoring._govt_backstop(tmpdb, "TST", row) == "pass"
+    assert scoring._govt_backstop(tmpdb, "TST", row) == "watch"
 
 
 def test_govt_pass_from_filing_keyword_hits(tmpdb):
@@ -116,7 +136,91 @@ def test_govt_pass_from_filing_keyword_hits(tmpdb):
     )
     tmpdb.commit()
     row = _chokepoint(tmpdb)
+    assert scoring._govt_backstop(tmpdb, "TST", row) == "watch"
+
+
+def test_govt_pass_from_official_award(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO govt_awards (ticker, agency, award_amount_usd, official_url) "
+        "VALUES ('TST', 'CHIPS Program Office', 12000000, 'https://chips.gov/example')",
+    )
+    tmpdb.commit()
+    row = _chokepoint(tmpdb)
     assert scoring._govt_backstop(tmpdb, "TST", row) == "pass"
+
+
+# ---- initial plan checklist fidelity -------------------------------------
+
+def test_serenity_liquidity_trap_fails_stale_post_signal_move(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO serenity_signals (ticker, signaled_at, price_at_signal) "
+        "VALUES ('TST', datetime('now', '-2 days'), 10.0)"
+    )
+    tmpdb.execute(
+        "INSERT INTO contamination (ticker, last_close, crowd_flag) VALUES ('TST', 12.0, 'low')"
+    )
+    tmpdb.commit()
+    assert scoring._serenity_liquidity_trap(tmpdb, "TST") == "fail"
+
+
+def test_supplier_relationship_upgrades_step1(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO supplier_relationships "
+        "(supplier_ticker, customer_name, evidence_grade, direction, phrase) "
+        "VALUES ('TST', 'Hyperscaler Y', 'A', 'customer_to_supplier', 'sole supplier')"
+    )
+    tmpdb.commit()
+    row = _chokepoint(tmpdb)
+    out = scoring.score_row(tmpdb, row)
+    assert out["step_1"] == "pass"
+
+
+def test_capacity_model_overrides_curated_capacity_row(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO capacity_models (ticker, period, supply_units, demand_units, gap_pct, expansion_timeline_mo) "
+        "VALUES ('TST', '2026Q4', 100, 140, 40, 18)"
+    )
+    tmpdb.commit()
+    row = _chokepoint(tmpdb, capacity_gap_pct=None, expansion_timeline_mo=None)
+    assert scoring._capacity_signal(tmpdb, "TST", row) == "pass"
+
+
+def test_substitution_requires_two_short_term_blockers(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO substitution_assessments "
+        "(ticker, short_term_non_substitutable_count, status) VALUES ('TST', 2, 'unknown')"
+    )
+    tmpdb.commit()
+    assert scoring._substitution_risk(tmpdb, "TST") == "pass"
+
+
+def test_float_liquidity_fails_when_exit_takes_too_long(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO float_short_interest (ticker, days_to_exit, short_interest_pct) "
+        "VALUES ('TST', 6.0, 5.0)"
+    )
+    tmpdb.commit()
+    assert scoring._float_exit_liquidity(tmpdb, "TST") == "fail"
+
+
+def test_catalyst_event_passes_when_falsifiable_inside_90_days(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO catalyst_events (ticker, event_date, event_type, description, falsifiable) "
+        "VALUES ('TST', date('now', '+30 days'), 'earnings', 'customer ramp update', 1)"
+    )
+    tmpdb.commit()
+    row = _chokepoint(tmpdb, catalyst_score=None)
+    assert scoring._catalyst_signal(tmpdb, "TST", row) == "pass"
+
+
+def test_ma_floor_estimate_passes_when_floor_exceeds_1_5x_market_cap(tmpdb):
+    tmpdb.execute(
+        "INSERT INTO ma_floor_estimates (ticker, estimated_floor_usd, current_market_cap_usd) "
+        "VALUES ('TST', 1800000000, 1000000000)"
+    )
+    tmpdb.commit()
+    row = _chokepoint(tmpdb, market_cap_usd=1_000_000_000, revenue_ttm_usd=100_000_000)
+    assert scoring._ma_floor_signal(tmpdb, "TST", row) == "pass"
 
 
 # ---- overall verdict ------------------------------------------------------
@@ -155,3 +259,30 @@ def test_verdict_watch_when_insiders_selling(tmpdb):
     assert out["step_1"] == "pass"
     assert out["step_6"] == "fail"
     assert out["overall"] == "Watch"
+
+
+# ---- score persistence semantics -----------------------------------------
+
+def test_compute_all_does_not_persist_scores(tmpdb):
+    tmpdb.execute("INSERT INTO chokepoints (ticker, crowdedness) VALUES ('TST', 'low')")
+    tmpdb.commit()
+    out = scoring.compute_all()
+    assert len(out) == 1
+    assert tmpdb.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == 0
+
+
+def test_score_all_persists_when_requested(tmpdb):
+    tmpdb.execute("INSERT INTO chokepoints (ticker, crowdedness) VALUES ('TST', 'low')")
+    tmpdb.commit()
+    out = scoring.score_all(persist=True)
+    assert len(out) == 1
+    assert tmpdb.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == 1
+
+
+def test_latest_scores_reads_persisted_rows_without_adding_new_ones(tmpdb):
+    tmpdb.execute("INSERT INTO chokepoints (ticker, crowdedness) VALUES ('TST', 'low')")
+    tmpdb.execute("INSERT INTO scores (ticker, step_minus1, overall) VALUES ('TST', 'pass', 'Watch')")
+    tmpdb.commit()
+    out = scoring.latest_scores()
+    assert out[0]["ticker"] == "TST"
+    assert tmpdb.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == 1

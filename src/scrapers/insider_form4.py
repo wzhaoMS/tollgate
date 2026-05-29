@@ -120,11 +120,14 @@ def _parse_form4_xml(xml_text: str) -> list[dict]:
     filer_name = owner.text.strip() if owner and owner.text else None
     is_director = soup.find("isDirector")
     is_officer = soup.find("isOfficer")
+    officer_title = soup.find("officerTitle")
     relation_bits = []
     if is_director and is_director.text and is_director.text.strip() in {"1", "true"}:
         relation_bits.append("director")
     if is_officer and is_officer.text and is_officer.text.strip() in {"1", "true"}:
         relation_bits.append("officer")
+    if officer_title and officer_title.text:
+        relation_bits.append(officer_title.text.strip())
     relation = ",".join(relation_bits) or None
 
     txns: list[dict] = []

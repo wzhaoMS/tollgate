@@ -76,7 +76,7 @@ def render_markdown() -> str:
     lines.append("\n## 4) Scoring snapshot\n")
     lines.append("| Ticker | Overall | Step -1 | Step 1 | Step 2 | Step 8 | Step 9 |")
     lines.append("|--------|---------|---------|--------|--------|--------|--------|")
-    for r in scoring.score_all():
+    for r in scoring.latest_scores():
         lines.append(
             f"| {r['ticker']} | **{r['overall']}** | {r['step_minus1']} | "
             f"{r['step_1']} | {r['step_2']} | {r['step_8']} | {r['step_9']} |"

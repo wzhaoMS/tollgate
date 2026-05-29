@@ -117,6 +117,20 @@ CREATE TABLE IF NOT EXISTS insider_txns (
 );
 CREATE INDEX IF NOT EXISTS idx_insider_ticker ON insider_txns(ticker);
 
+CREATE TABLE IF NOT EXISTS insider_option_events (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker                  TEXT NOT NULL,
+    insider_name            TEXT,
+    role                    TEXT,
+    expiry_date             TEXT NOT NULL,
+    shares                  REAL,
+    estimated_value_usd     REAL,
+    status                  TEXT CHECK(status IN ('open','exercised','expired','unknown')) DEFAULT 'open',
+    source_url              TEXT,
+    discovered_at           TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_option_events_ticker_expiry ON insider_option_events(ticker, expiry_date);
+
 CREATE TABLE IF NOT EXISTS tweets (
     tweet_id        TEXT PRIMARY KEY,
     handle          TEXT,
@@ -148,6 +162,247 @@ CREATE TABLE IF NOT EXISTS positions (
     pnl_pct         REAL,
     closed_at       TEXT,
     notes           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    command         TEXT NOT NULL,
+    started_at      TEXT DEFAULT (datetime('now')),
+    finished_at     TEXT,
+    status          TEXT CHECK(status IN ('running','ok','warn','error')) DEFAULT 'running',
+    git_sha         TEXT,
+    inserted_count  INTEGER DEFAULT 0,
+    updated_count   INTEGER DEFAULT 0,
+    skipped_count   INTEGER DEFAULT 0,
+    error_count     INTEGER DEFAULT 0,
+    warnings        TEXT,
+    details_json    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS signal_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker          TEXT,
+    source_type     TEXT,
+    source_url      TEXT,
+    observed_at     TEXT DEFAULT (datetime('now')),
+    event_date      TEXT,
+    title           TEXT,
+    summary         TEXT,
+    evidence_grade  TEXT CHECK(evidence_grade IN ('A','B','C','D','U')) DEFAULT 'U',
+    consensus_state TEXT CHECK(consensus_state IN ('undiscovered','partial','consensus','unknown')) DEFAULT 'unknown',
+    raw_json        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_signal_events_ticker_time ON signal_events(ticker, observed_at);
+
+CREATE TABLE IF NOT EXISTS serenity_signals (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker              TEXT NOT NULL,
+    handle              TEXT DEFAULT 'aleabitoreddit',
+    tweet_id            TEXT,
+    signaled_at         TEXT NOT NULL,
+    source_url          TEXT,
+    signal_text         TEXT,
+    price_at_signal     REAL,
+    price_checked_at    TEXT,
+    follower_count      INTEGER,
+    created_at          TEXT DEFAULT (datetime('now')),
+    UNIQUE(handle, tweet_id)
+);
+CREATE INDEX IF NOT EXISTS idx_serenity_signals_ticker_time ON serenity_signals(ticker, signaled_at);
+
+CREATE TABLE IF NOT EXISTS supplier_relationships (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_ticker     TEXT NOT NULL,
+    customer_name       TEXT,
+    customer_ticker     TEXT,
+    source_accession_no TEXT,
+    source_url          TEXT,
+    source_type         TEXT,
+    evidence_grade      TEXT CHECK(evidence_grade IN ('A','B','C','D','U')) DEFAULT 'U',
+    relationship_type   TEXT,
+    phrase              TEXT,
+    direction           TEXT CHECK(direction IN ('customer_to_supplier','supplier_to_customer','unknown')) DEFAULT 'unknown',
+    confidence          REAL,
+    verified_at         TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_relationships_supplier ON supplier_relationships(supplier_ticker);
+CREATE INDEX IF NOT EXISTS idx_supplier_relationships_customer ON supplier_relationships(customer_ticker, customer_name);
+
+CREATE TABLE IF NOT EXISTS capacity_models (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker                  TEXT NOT NULL,
+    period                  TEXT NOT NULL,
+    supply_units            REAL,
+    demand_units            REAL,
+    gap_pct                 REAL,
+    expansion_timeline_mo   INTEGER,
+    source_url              TEXT,
+    assumptions             TEXT,
+    updated_at              TEXT DEFAULT (datetime('now')),
+    UNIQUE(ticker, period)
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_models_ticker_period ON capacity_models(ticker, period);
+
+CREATE TABLE IF NOT EXISTS substitution_assessments (
+    id                                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker                              TEXT NOT NULL,
+    substitute_materials                TEXT,
+    substitute_suppliers                TEXT,
+    customer_self_build_risk            TEXT,
+    short_term_non_substitutable_count  INTEGER,
+    status                              TEXT CHECK(status IN ('pass','watch','fail','unknown')) DEFAULT 'unknown',
+    source_url                          TEXT,
+    notes                               TEXT,
+    assessed_at                         TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_substitution_ticker_time ON substitution_assessments(ticker, assessed_at);
+
+CREATE TABLE IF NOT EXISTS govt_awards (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker              TEXT NOT NULL,
+    agency              TEXT,
+    program             TEXT,
+    award_amount_usd    REAL,
+    official_url        TEXT,
+    announced_at        TEXT,
+    source_excerpt      TEXT,
+    verified_at         TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_govt_awards_ticker_amount ON govt_awards(ticker, award_amount_usd);
+
+CREATE TABLE IF NOT EXISTS float_short_interest (
+    ticker                  TEXT PRIMARY KEY,
+    measured_at             TEXT DEFAULT (datetime('now')),
+    float_shares            REAL,
+    short_interest_pct      REAL,
+    avg_dollar_volume       REAL,
+    intended_position_usd   REAL,
+    days_to_exit            REAL,
+    source_url              TEXT
+);
+
+CREATE TABLE IF NOT EXISTS catalyst_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker          TEXT NOT NULL,
+    event_date      TEXT NOT NULL,
+    event_type      TEXT,
+    description     TEXT,
+    falsifiable     INTEGER DEFAULT 1,
+    probability     REAL,
+    source_url      TEXT,
+    status          TEXT CHECK(status IN ('planned','confirmed','missed','done','cancelled')) DEFAULT 'planned',
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_catalyst_events_ticker_date ON catalyst_events(ticker, event_date);
+
+CREATE TABLE IF NOT EXISTS position_sizing_decisions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker                  TEXT NOT NULL,
+    decided_at              TEXT DEFAULT (datetime('now')),
+    p_win                   REAL,
+    avg_gain_pct            REAL,
+    p_loss                  REAL,
+    avg_loss_pct            REAL,
+    kelly_fraction          REAL,
+    quarter_kelly_pct       REAL,
+    capped_position_pct     REAL,
+    dollar_amount           REAL,
+    constraints_json        TEXT,
+    decision                TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_position_sizing_ticker_time ON position_sizing_decisions(ticker, decided_at);
+
+CREATE TABLE IF NOT EXISTS theme_exposures (
+    theme               TEXT PRIMARY KEY,
+    measured_at         TEXT DEFAULT (datetime('now')),
+    gross_exposure_pct  REAL,
+    net_exposure_pct    REAL,
+    cap_pct             REAL DEFAULT 15.0,
+    status              TEXT CHECK(status IN ('ok','watch','breach','unknown')) DEFAULT 'unknown'
+);
+
+CREATE TABLE IF NOT EXISTS follower_history (
+    handle          TEXT NOT NULL,
+    observed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    follower_count  INTEGER NOT NULL,
+    source_url      TEXT,
+    PRIMARY KEY (handle, observed_at)
+);
+
+CREATE TABLE IF NOT EXISTS pair_trade_watchlist (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    theme           TEXT,
+    long_ticker     TEXT NOT NULL,
+    short_ticker    TEXT NOT NULL,
+    opened_at       TEXT DEFAULT (datetime('now')),
+    closed_at       TEXT,
+    entry_spread_pct REAL,
+    current_spread_pct REAL,
+    notes           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pair_watchlist_open ON pair_trade_watchlist(closed_at, theme);
+
+CREATE TABLE IF NOT EXISTS pair_trade_snapshots (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    watchlist_id         INTEGER,
+    measured_at          TEXT DEFAULT (datetime('now')),
+    long_price           REAL,
+    short_price          REAL,
+    spread_pct           REAL,
+    pnl_pct              REAL,
+    FOREIGN KEY(watchlist_id) REFERENCES pair_trade_watchlist(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pair_snapshots_watchlist_time ON pair_trade_snapshots(watchlist_id, measured_at);
+
+CREATE TABLE IF NOT EXISTS ma_floor_estimates (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker                  TEXT NOT NULL,
+    estimated_floor_usd     REAL,
+    current_market_cap_usd  REAL,
+    acquirers               TEXT,
+    strategic_value_notes   TEXT,
+    source_url              TEXT,
+    assessed_at             TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ma_floor_ticker_time ON ma_floor_estimates(ticker, assessed_at);
+
+CREATE TABLE IF NOT EXISTS consensus_metrics (
+    ticker                  TEXT PRIMARY KEY,
+    measured_at             TEXT DEFAULT (datetime('now')),
+    truth_score             REAL,
+    consensus_score         REAL,
+    analyst_coverage_count  INTEGER,
+    media_mentions_30d      INTEGER,
+    social_mentions_30d     INTEGER,
+    status                  TEXT CHECK(status IN ('hidden_truth','emerging','consensus','unproven','unknown')) DEFAULT 'unknown',
+    source_url              TEXT
+);
+
+CREATE TABLE IF NOT EXISTS source_feed_status (
+    source_name     TEXT PRIMARY KEY,
+    source_type     TEXT,
+    last_checked_at TEXT,
+    last_success_at TEXT,
+    status          TEXT CHECK(status IN ('ok','warn','error','unknown')) DEFAULT 'unknown',
+    error_count     INTEGER DEFAULT 0,
+    last_error      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS exit_plans (
+    ticker                          TEXT PRIMARY KEY,
+    created_at                      TEXT DEFAULT (datetime('now')),
+    stop_loss_pct                   REAL DEFAULT -40.0,
+    take_profit_1_pct               REAL DEFAULT 200.0,
+    take_profit_1_sell_pct          REAL DEFAULT 33.3333,
+    take_profit_1_trailing_stop_pct REAL DEFAULT -25.0,
+    take_profit_2_pct               REAL DEFAULT 500.0,
+    take_profit_2_sell_pct          REAL DEFAULT 50.0,
+    take_profit_2_trailing_stop_pct REAL DEFAULT -15.0,
+    stale_months                    INTEGER DEFAULT 18,
+    analyst_coverage_trim_threshold INTEGER DEFAULT 3,
+    capacity_gap_exit_pct           REAL DEFAULT -5.0,
+    notes                           TEXT
 );
 """
 
