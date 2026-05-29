@@ -40,23 +40,44 @@ st.set_page_config(page_title="Tollgate", page_icon="🎯", layout="wide")
 @st.cache_resource
 def _bootstrap() -> str:
     """Ensure the schema exists and, on a fresh deploy (e.g. Streamlit Cloud
-    where the gitignored DB is absent), load the built-in demo data once."""
+    where the gitignored DB is absent), load the built-in demo data once.
+    Then ensure prices and scores are populated so the dashboard is never blank."""
     db.init()
     with db.connect() as cx:
         has_rows = cx.execute("SELECT COUNT(*) FROM chokepoints").fetchone()[0]
-    if has_rows:
-        return "existing"
-    try:
-        from src import seed, seed_builtin
-        seed.load_seed_csv()
-        seed.write_keyword_dict()
-        seed_builtin.seed_all()
-        capacity_tracker.import_builtin_capacity()
-        governance.import_builtin_events()
-        signal_feeds.import_builtin_pages()
-        return "seeded"
-    except Exception as e:  # best-effort; dashboard still renders if seeding fails
-        return f"seed-error: {e}"
+    if not has_rows:
+        try:
+            from src import seed, seed_builtin
+            seed.load_seed_csv()
+            seed.write_keyword_dict()
+            seed_builtin.seed_all()
+            capacity_tracker.import_builtin_capacity()
+            governance.import_builtin_events()
+            signal_feeds.import_builtin_pages()
+        except Exception:
+            pass
+
+    # Always ensure prices + scores exist on first load so the dashboard
+    # is never blank — this runs once per server start (cache_resource).
+    with db.connect() as cx:
+        has_prices = cx.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+        has_scores = cx.execute("SELECT COUNT(*) FROM scores").fetchone()[0]
+
+    if not has_prices:
+        try:
+            from src.scrapers import yf_prices
+            yf_prices.main()
+        except Exception:
+            pass
+
+    if not has_scores:
+        try:
+            from src import scoring
+            scoring.score_all(persist=True)
+        except Exception:
+            pass
+
+    return "ready"
 
 
 _bootstrap()
