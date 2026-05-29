@@ -305,6 +305,10 @@ else:
         .reindex(ct["pct_change_20d"].abs().sort_values(ascending=False).index)
         .head(6)["ticker"].tolist()
     )
+    # Prefer thesis-relevant tickers when available; fall back to biggest movers.
+    _thesis = ["SIVE", "AXTI", "POET", "SOI", "XFAB", "IQE", "HPS-A", "AEHR"]
+    thesis_avail = [t for t in _thesis if t in valid]
+    default_top = (thesis_avail[:8] if thesis_avail else default_top)
     default_top = [t for t in default_top if t in valid] or valid[:6]
 
     a, b = st.columns([3, 1])
@@ -331,18 +335,21 @@ else:
                 st.info("No plottable price data for the selected tickers.")
             else:
                 chart_df = normed.reset_index().melt("date", var_name="ticker", value_name="value").dropna()
-                chart = (
-                    alt.Chart(chart_df)
-                    .mark_line()
-                    .encode(
-                        x=alt.X("date:T", title="Date"),
-                        y=alt.Y("value:Q", title="Log10 normalized close" if log_scale else "Normalized close"),
-                        color=alt.Color("ticker:N", title="Ticker"),
-                        tooltip=["ticker:N", "date:T", alt.Tooltip("value:Q", format=".2f")],
+                if chart_df.empty:
+                    st.info("No plottable price data for the selected tickers.")
+                else:
+                    chart = (
+                        alt.Chart(chart_df)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("date:T", title="Date"),
+                            y=alt.Y("value:Q", title="Log10 normalized close" if log_scale else "Normalized close"),
+                            color=alt.Color("ticker:N", title="Ticker"),
+                            tooltip=["ticker:N", "date:T", alt.Tooltip("value:Q", format=".2f")],
+                        )
+                        .properties(height=360)
                     )
-                    .properties(height=360)
-                )
-                st.altair_chart(chart, width="stretch")
+                    st.altair_chart(chart, width="stretch")
     else:
         with a:
             st.info("Pick at least one ticker.")
@@ -354,13 +361,7 @@ try:
     if lifecycles:
         lc_df = pd.DataFrame(lifecycles)
 
-        def _exit_color(val):
-            return "background-color: #fee2e2; font-weight: bold" if val else ""
-
-        styled_lc = lc_df.style.map(_exit_color, subset=["exit_signal"]) if "exit_signal" in lc_df.columns else lc_df
-        st.dataframe(styled_lc, width="stretch", height=240)
-
-        # Show timeline chart for selected ticker
+        # Show timeline chart FIRST (user wants chart above table)
         lc_tickers = lc_df["ticker"].tolist()
         if lc_tickers:
             pick_cap = st.selectbox("Capacity timeline for:", lc_tickers, key="cap_pick")
@@ -400,6 +401,19 @@ try:
                 )
                 st.altair_chart(chart, width="stretch")
                 st.altair_chart(gap_chart, width="stretch")
+
+        # Table BELOW the charts — format numbers + readable exit signal
+        lc_df["current_gap_pct"] = lc_df["current_gap_pct"].round(1)
+        lc_df["exit_signal"] = lc_df["exit_signal"].map({True: "🔴 EXIT", False: "✅ OK"})
+        st.dataframe(
+            lc_df,
+            width="stretch",
+            height=min(56 + len(lc_df) * 36, 400),
+            column_config={
+                "current_gap_pct": st.column_config.NumberColumn("Gap %", format="%.1f%%"),
+                "data_points": st.column_config.NumberColumn("Data pts"),
+            },
+        )
     else:
         st.info("Run `py -m src.cli capacity --builtin` to seed capacity data.")
 except Exception:
@@ -417,13 +431,23 @@ else:
 
     def _color(val):
         return {
-            "Buy": "background-color: #d1fae5",
-            "Watch": "background-color: #fef3c7",
-            "Pass": "background-color: #fee2e2",
-            "Skip": "background-color: #e5e7eb",
+            "Buy": "color: #22c55e; font-weight: bold",
+            "Watch": "color: #f59e0b; font-weight: bold",
+            "Pass": "color: #ef4444; font-weight: bold",
+            "Skip": "color: #9ca3af",
         }.get(val, "")
 
-    styled = ordered.style.map(_color, subset=["overall"])
+    def _step_color(val):
+        return {
+            "pass": "color: #22c55e",
+            "small": "color: #86efac",
+            "watch": "color: #f59e0b",
+            "fail": "color: #ef4444",
+            "unknown": "color: #6b7280",
+        }.get(str(val).lower().strip(), "")
+
+    step_cols = [c for c in ordered.columns if c.startswith("step_")]
+    styled = ordered.style.map(_color, subset=["overall"]).map(_step_color, subset=step_cols)
     st.dataframe(styled, width="stretch", height=360)
 
 # Section 5 — pair trades

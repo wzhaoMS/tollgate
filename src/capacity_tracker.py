@@ -61,6 +61,45 @@ BUILTIN_CAPACITY_DATA: list[dict[str, Any]] = [
     {"ticker": "IQE", "quarter": "2025-Q3", "supply_units": 280000, "demand_units": 360000,
      "gap_pct": -22.2, "unit_label": "epiwafers/yr", "price_power": "high",
      "assumptions": "IQE top-2 global epiwafer; VCSEL+photonics demand rising"},
+    {"ticker": "IQE", "quarter": "2026-Q2", "supply_units": 310000, "demand_units": 380000,
+     "gap_pct": -18.4, "unit_label": "epiwafers/yr", "price_power": "high",
+     "assumptions": "Modest capacity expansion; Apple VCSEL orders normalizing"},
+    {"ticker": "IQE", "quarter": "2027-Q2", "supply_units": 350000, "demand_units": 400000,
+     "gap_pct": -12.5, "unit_label": "epiwafers/yr", "price_power": "neutral",
+     "assumptions": "WIN Semi gaining share; gap narrowing toward equilibrium"},
+
+    # POET — Optical interposer / CPO packaging
+    {"ticker": "POET", "quarter": "2025-Q3", "supply_units": 30000, "demand_units": 45000,
+     "gap_pct": -33.3, "unit_label": "interposers/yr", "price_power": "high",
+     "assumptions": "POET sole-source optical interposer; Foxconn JV ramping"},
+    {"ticker": "POET", "quarter": "2026-Q2", "supply_units": 55000, "demand_units": 80000,
+     "gap_pct": -31.3, "unit_label": "interposers/yr", "price_power": "high",
+     "assumptions": "Foxconn JV volume ramp; multiple design wins expected"},
+    {"ticker": "POET", "quarter": "2027-Q2", "supply_units": 90000, "demand_units": 120000,
+     "gap_pct": -25.0, "unit_label": "interposers/yr", "price_power": "high",
+     "assumptions": "CPO adoption growing; POET capacity trailing demand"},
+
+    # HPS-A — Data center power transformers
+    {"ticker": "HPS-A", "quarter": "2025-Q3", "supply_units": 15000, "demand_units": 22000,
+     "gap_pct": -31.8, "unit_label": "transformer units/yr", "price_power": "very_high",
+     "assumptions": "Hammond Power: 18-24mo lead time; datacenter power backlog"},
+    {"ticker": "HPS-A", "quarter": "2026-Q2", "supply_units": 18000, "demand_units": 28000,
+     "gap_pct": -35.7, "unit_label": "transformer units/yr", "price_power": "very_high",
+     "assumptions": "AI datacenter buildout accelerating demand; capacity constrained"},
+    {"ticker": "HPS-A", "quarter": "2027-Q2", "supply_units": 25000, "demand_units": 32000,
+     "gap_pct": -21.9, "unit_label": "transformer units/yr", "price_power": "high",
+     "assumptions": "New manufacturing lines online; backlog slowly clearing"},
+
+    # AEHR — SiC burn-in/test equipment
+    {"ticker": "AEHR", "quarter": "2025-Q3", "supply_units": 120, "demand_units": 180,
+     "gap_pct": -33.3, "unit_label": "FOX-XP systems/yr", "price_power": "high",
+     "assumptions": "Aehr sole-source wafer-level burn-in; SiC customers ramping"},
+    {"ticker": "AEHR", "quarter": "2026-Q2", "supply_units": 160, "demand_units": 220,
+     "gap_pct": -27.3, "unit_label": "FOX-XP systems/yr", "price_power": "high",
+     "assumptions": "SiC capacity buildout drives test demand; ON Semi, STMicro"},
+    {"ticker": "AEHR", "quarter": "2027-Q2", "supply_units": 200, "demand_units": 240,
+     "gap_pct": -16.7, "unit_label": "FOX-XP systems/yr", "price_power": "neutral",
+     "assumptions": "Market maturing; competitor test approaches emerging"},
 ]
 
 
