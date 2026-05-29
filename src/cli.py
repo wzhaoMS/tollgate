@@ -148,7 +148,10 @@ def cmd_all(args: list[str]) -> int:
     cmd_seed(args)
     cmd_prices(args)
     cmd_harvest([])
-    cmd_fulltext([])
+    # 8-K bodies carry catalysts; 10-K risk factors carry CHIPS/DoE govt
+    # language that step_4 (govt backstop) keys off of.
+    cmd_fulltext(["--form", "8-K", "--limit", "60"])
+    cmd_fulltext(["--form", "10-K", "--limit", "40"])
     cmd_insider([])
     cmd_tweets(args)
     cmd_diffwatch(args)
