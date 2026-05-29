@@ -13,6 +13,62 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     return {k: row[k] for k in row.keys()}
 
 
+# Evidence grade ranking (best -> worst) so we can pick the strongest item.
+_GRADE_RANK = {"A": 4, "B": 3, "C": 2, "D": 1}
+
+
+def _best_evidence_grade(cx, ticker: str) -> str | None:
+    """Return the strongest evidence grade recorded for a ticker, or None."""
+    rows = cx.execute(
+        "SELECT grade FROM evidence_log WHERE ticker = ? AND grade IS NOT NULL",
+        (ticker,),
+    ).fetchall()
+    best: str | None = None
+    best_rank = 0
+    for r in rows:
+        g = (r["grade"] or "")[:1].upper()
+        rank = _GRADE_RANK.get(g, 0)
+        if rank > best_rank:
+            best, best_rank = g, rank
+    return best
+
+
+def _insider_signal(cx, ticker: str, lookback_days: int = 180) -> str:
+    """Net insider purchase/sale signal from Form 4 data.
+
+    Transaction codes: 'P' = open-market purchase, 'S' = open-market sale.
+    pass  => net dollar buying by insiders
+    fail  => net dollar selling by insiders
+    watch => activity present but roughly balanced / non-open-market only
+    unknown => no Form 4 rows for this ticker
+    """
+    rows = cx.execute(
+        "SELECT txn_code, dollar_amount FROM insider_txns "
+        "WHERE ticker = ? AND txn_date >= date('now', ?)",
+        (ticker, f"-{lookback_days} days"),
+    ).fetchall()
+    if not rows:
+        return "unknown"
+    buy = sell = 0.0
+    seen_open_market = False
+    for r in rows:
+        code = (r["txn_code"] or "").upper()
+        amt = r["dollar_amount"] or 0.0
+        if code == "P":
+            buy += amt
+            seen_open_market = True
+        elif code == "S":
+            sell += amt
+            seen_open_market = True
+    if not seen_open_market:
+        return "watch"
+    if buy > sell:
+        return "pass"
+    if sell > buy:
+        return "fail"
+    return "watch"
+
+
 def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"ticker": row["ticker"]}
 
@@ -28,8 +84,9 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     flag = (row.get("capital_structure_flag") or "unknown").lower()
     out["step_0"] = "fail" if flag == "redflag" else "pass" if flag in {"clean", "atm"} else "unknown"
 
-    # Step 1: Evidence grade
-    grade = (row.get("evidence_grade") or "U")[:1]
+    # Step 1: Evidence grade. Prefer the strongest grade actually harvested into
+    # evidence_log (from filing enrichment); fall back to the curated column.
+    grade = _best_evidence_grade(cx, row["ticker"]) or (row.get("evidence_grade") or "U")[:1]
     out["step_1"] = (
         "pass" if grade == "A"
         else "small" if grade == "B"
@@ -60,8 +117,8 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     else:
         out["step_5"] = "unknown"
 
-    # Step 6: Insider — needs Form 4 scrape; default unknown
-    out["step_6"] = "unknown"
+    # Step 6: Insider activity from harvested Form 4 transactions.
+    out["step_6"] = _insider_signal(cx, row["ticker"])
 
     # Step 7: Liquidity — needs market data; default unknown
     out["step_7"] = "unknown"
@@ -82,7 +139,12 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     if hard_fails:
         overall = "Pass"
     elif out["step_1"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
-        overall = "Buy"
+        # Strong setup. Insiders actively selling tempers conviction down to Watch.
+        overall = "Watch" if out["step_6"] == "fail" else "Buy"
+    elif out["step_6"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
+        # Not A-grade evidence yet, but insiders are buying alongside a live
+        # catalyst on a near-term clock — worth a Watch upgrade from Skip.
+        overall = "Watch"
     elif out["step_1"] in {"small", "watch"} or any(out[k] == "unknown" for k in out if k.startswith("step_")):
         overall = "Watch"
     else:
