@@ -1,0 +1,20 @@
+# personal local data / drafts
+notes.local.md
+*.local.*
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# spreadsheets in progress
+~$*.xlsx
+*.tmp.csv
+
+# secrets
+secrets/
+*.pem
+*.key

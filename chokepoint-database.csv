@@ -1,0 +1,10 @@
+Ticker,Chokepoint,End_Customer,Evidence_Grade,Evidence_Source_URL,Capacity,Demand_Proxy,Capacity_Gap_Pct,Expansion_Timeline_Mo,Substitutes,Market_Cap_USD,Revenue_TTM_USD,EV_Sales,Next_Catalyst,Catalyst_Score,Crowdedness,Capital_Structure_Flag,Time_to_Truth_Days,Decision,Last_Updated
+SIVE,CW laser array for CPO,Ayar/Lightmatter/Celestial AI,B,TBD,unknown,unknown,unknown,unknown,GaAs DML for short reach,2100000000,50000000,42.0,Q2 2026 earnings,7,high,atm,90,Watch,2026-05-28
+XFAB,SiC + silicon-photonics foundry,NVDA/NOK (in evaluation),C,TBD,unknown,unknown,unknown,24,WOLF SiC alternative,1280000000,unknown,unknown,EU CHIPS Act 2 outcome,7,medium,clean,180,Watch,2026-05-28
+AAOI,InP fab + optical transceivers,MSFT Maia/AMZN Trainium,B,TBD,unknown,unknown,unknown,18,Coherent InP / Macom,13000000000,unknown,unknown,Q2 2026 earnings,9,high,atm,75,Watch,2026-05-28
+AXTI,InP substrate,COHR/LITE/AAOI downstream,B,TBD,unknown,unknown,unknown,12,JX Nippon InP / Sumitomo,unknown,unknown,unknown,Q2 2026 earnings,7,high,clean,75,Watch,2026-05-28
+SOI,SOI substrate for silicon photonics,TSM/Intel/foundries,B,TBD,unknown,unknown,unknown,18,Shin-Etsu SOI license,unknown,unknown,unknown,FY 2026 results,7,medium,clean,120,Watch,2026-05-28
+LITE,Optical transceivers + HCF,Google TPU / NVDA,A,TBD,unknown,unknown,unknown,12,COHR / Innolight,27000000000,unknown,unknown,Q1 2027 earnings,9,medium,clean,90,Watch,2026-05-28
+COHR,Optical components + InP,NVDA / Hyperscalers,A,TBD,unknown,unknown,unknown,18,LITE / Innolight,unknown,unknown,unknown,Q2 2026 earnings,9,medium,clean,75,Watch,2026-05-28
+CIEN,Coherent DCI optical transport,Hyperscalers / Carriers,A,TBD,unknown,unknown,unknown,24,Nokia Infinera / Cisco,unknown,unknown,unknown,Q3 2026 earnings,9,low,clean,90,Watch,2026-05-28
+NOK,Coherent DCI optical (Infinera) + AI-RAN,Telcos / Hyperscalers,B,TBD,unknown,unknown,unknown,24,Ciena / Ericsson,35000000000,21000000000,1.7,Q2 2026 earnings,8,low,clean,75,Watch,2026-05-28
