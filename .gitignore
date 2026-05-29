@@ -34,3 +34,7 @@ Thumbs.db
 # spreadsheets in progress
 ~$*.xlsx
 *.tmp.csv
+
+data/backups/
+data/logs/
+
