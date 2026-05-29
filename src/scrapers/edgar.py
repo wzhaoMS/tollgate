@@ -5,6 +5,7 @@ the SEC Fair Access policy: per-request User-Agent with contact, and self-thrott
 to EDGAR_RPS req/sec.
 """
 from __future__ import annotations
+import hashlib
 import json
 import re
 import time
@@ -82,8 +83,12 @@ def _extract_accession(entry: dict) -> str:
         m = _ACC_RE.search(v)
         if m:
             return m.group(1)
-    # fall back to URL hash so we always have a primary key
-    return f"NA-{abs(hash(entry.get('link') or entry.get('id') or entry.get('title') or ''))%10**12:012d}"
+    # fall back to a STABLE content hash so the same entry always maps to the
+    # same primary key across runs (Python's built-in hash() is salted per
+    # process via PYTHONHASHSEED and would create duplicate rows otherwise).
+    seed = (entry.get("link") or entry.get("id") or entry.get("title") or "").encode("utf-8")
+    digest = hashlib.sha1(seed).hexdigest()[:12]
+    return f"NA-{digest}"
 
 
 def _extract_cik(entry: dict) -> str | None:

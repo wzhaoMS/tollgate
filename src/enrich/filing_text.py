@@ -85,7 +85,11 @@ Filing text:
 
 
 def extract_evidence(text: str) -> dict:
-    user = EXTRACTION_USER_TMPL.format(text=text[:55_000])
+    # Neutralise the triple-quote delimiter so a filing that itself contains
+    # `\"\"\"` (or a prompt-injection payload using it) cannot break out of the
+    # quoted block and rewrite our instructions (OWASP LLM01).
+    safe_text = text[:55_000].replace('"""', '\u201c\u201c\u201c')
+    user = EXTRACTION_USER_TMPL.format(text=safe_text)
     return ask_json(EXTRACTION_SYSTEM, user)
 
 
