@@ -35,17 +35,22 @@ from . import (
     alpaca_paper,
     backtest,
     brief,
+    customer_universe,
     db,
     doctor,
     drawdown,
     exit_plan,
+    ma_floor,
     pair_trade,
     risk_sizing,
+    rotation,
     runlog,
     scoring,
     seed,
+    seed_signals,
     source_health,
     strategy_signals,
+    supply_chain,
 )
 from . import (
     backup as backup_mod,
@@ -204,6 +209,105 @@ def cmd_backup(args: list[str]) -> int:
     return 0
 
 
+def cmd_seed_serenity(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="seed_serenity")
+    p.add_argument("--csv", help="path to serenity_signals.csv (default data/seeds/...)")
+    ns = p.parse_args(args)
+    n = seed_signals.import_serenity_signals(ns.csv)
+    print(f"seed_serenity: +{n} rows into serenity_signals")
+    return 0
+
+
+def cmd_seed_followers(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="seed_followers")
+    p.add_argument("--csv", help="path to follower_history.csv (default data/seeds/...)")
+    ns = p.parse_args(args)
+    n = seed_signals.import_follower_history(ns.csv)
+    print(f"seed_followers: +{n} rows into follower_history")
+    return 0
+
+
+def cmd_seed_govt(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="seed_govt")
+    p.add_argument("--csv", help="path to govt_awards.csv")
+    p.add_argument("--builtin", action="store_true", help="load the built-in CHIPS Act seed")
+    ns = p.parse_args(args)
+    total = 0
+    if ns.builtin:
+        total += seed_signals.import_builtin_govt()
+    if ns.csv:
+        total += seed_signals.import_govt_awards(path=ns.csv)
+    if not ns.builtin and not ns.csv:
+        total += seed_signals.import_govt_awards(path=seed_signals.SEED_DIR / "govt_awards.csv")
+    print(f"seed_govt: +{total} rows into govt_awards")
+    return 0
+
+
+def cmd_supplychain(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="supplychain")
+    p.add_argument("--builtin", action="store_true", help="seed built-in obvious->supplier links")
+    p.add_argument("--for", dest="obvious", help="show suppliers for an obvious-trade ticker")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = supply_chain.import_builtin()
+        print(f"supplychain: +{n} link rows")
+    if ns.obvious:
+        rows = supply_chain.upstream_for(ns.obvious)
+        if not rows:
+            print(f"{ns.obvious.upper()}: no upstream suppliers recorded")
+            return 0
+        print(f"{ns.obvious.upper()} upstream suppliers (ranked by link strength):")
+        for r in rows:
+            mcap = r.get("market_cap_usd")
+            mcap_str = f"${mcap/1e9:.1f}B" if mcap else "n/a"
+            overall = r.get("overall") or "Unknown"
+            print(
+                f"  {r['supplier_ticker']:<6} link={r['link_strength']:.2f} "
+                f"mcap={mcap_str:<8} score={overall:<6} {r.get('rationale') or ''}"
+            )
+    return 0
+
+
+def cmd_rotation(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="rotation")
+    p.add_argument("--builtin", action="store_true", help="seed builtin theme stages first")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = rotation.import_builtin_stages()
+        print(f"rotation: +{n} stage rows")
+    rows = rotation.compute_rotation_signal()
+    for s in rows:
+        ret = s["avg_return_20d_pct"]
+        ret_str = f"{ret:+.1f}%" if ret is not None else "n/a"
+        flag = " *ROTATE*" if s["rotation_to_next"] else ""
+        print(f"  stage {s['stage_idx']} {s['theme']:<22} 20d={ret_str:<8} {s['signal']}{flag}")
+    return 0
+
+
+def cmd_mafloor(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="mafloor")
+    p.add_argument("--builtin", action="store_true", help="seed built-in acquirers before computing")
+    p.add_argument("--ticker", help="compute for a single ticker only")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = ma_floor.import_builtin_acquirers()
+        print(f"mafloor: +{n} acquirer rows")
+    if ns.ticker:
+        out = ma_floor.compute_floor(ns.ticker)
+        if out:
+            print(
+                f"{out['ticker']}: floor=${out['estimated_floor_usd']:.0f} "
+                f"mcap=${out['current_market_cap_usd']:.0f} "
+                f"sv=${out['max_strategic_value_usd']:.0f} acquirers=[{out['acquirers']}]"
+            )
+        else:
+            print(f"{ns.ticker}: no acquirers or no market cap recorded")
+        return 0
+    n = ma_floor.compute_all_floors()
+    print(f"mafloor: recomputed {n} chokepoint floor(s)")
+    return 0
+
+
 def cmd_fulltext(args: list[str]) -> int:
     p = argparse.ArgumentParser(prog="fulltext")
     p.add_argument("--limit", type=int, default=25, help="number of filings to fetch")
@@ -234,6 +338,36 @@ def cmd_relationships(args: list[str]) -> int:
         f"customer-filing extraction: scanned={res['scanned']}, "
         f"matched={res['matched']}, inserted={res['inserted']}, "
         f"skipped_existing={res['skipped_existing']}"
+    )
+    return 0
+
+
+def cmd_customer_harvest(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="customer_harvest")
+    p.add_argument("--per-form", type=int, default=15, help="filings per customer per form")
+    p.add_argument("--bodies", type=int, default=80, help="fulltext bodies to fetch after harvest")
+    p.add_argument("--scan-limit", type=int, default=2000, help="filings to scan for relationships")
+    ns = p.parse_args(args)
+    tickers = customer_universe.extract_customer_tickers()
+    print(f"customer universe ({len(tickers)}): {', '.join(tickers) or '(none)'}")
+    if not tickers:
+        return 0
+    inserted = edgar.harvest(
+        forms=("10-K", "10-Q", "8-K"),
+        per_form=ns.per_form,
+        tickers=tickers,
+    )
+    print(f"customer harvest: +{inserted} filings")
+    for form in ("10-K", "10-Q"):
+        res = filing_full.fetch_recent(limit=ns.bodies, forms=(form,))
+        print(
+            f"  fulltext {form}: +{res['fetched']} bodies, "
+            f"skipped={res['skipped']}, errors={res['errors']}"
+        )
+    rel = customer_relationships.extract_from_filings(limit=ns.scan_limit)
+    print(
+        f"relationships rescan: scanned={rel['scanned']}, matched={rel['matched']}, "
+        f"inserted={rel['inserted']}, skipped_existing={rel['skipped_existing']}"
     )
     return 0
 
@@ -377,6 +511,7 @@ COMMANDS = {
     "harvest": cmd_harvest,
     "fulltext": cmd_fulltext,
     "relationships": cmd_relationships,
+    "customer_harvest": cmd_customer_harvest,
     "enrich": cmd_enrich,
     "prices": cmd_prices,
     "insider": cmd_insider,
@@ -397,6 +532,12 @@ COMMANDS = {
     "brief": cmd_brief,
     "doctor": cmd_doctor,
     "backup": cmd_backup,
+    "seed_serenity": cmd_seed_serenity,
+    "seed_followers": cmd_seed_followers,
+    "seed_govt": cmd_seed_govt,
+    "mafloor": cmd_mafloor,
+    "rotation": cmd_rotation,
+    "supplychain": cmd_supplychain,
     "all": cmd_all,
 }
 

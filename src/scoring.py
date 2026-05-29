@@ -106,6 +106,85 @@ def _capacity_signal(cx, ticker: str, row: dict[str, Any]) -> str:
     return "pass" if shortage >= 30 and int(exp) >= 12 else "fail"
 
 
+def _independent_verification(cx, ticker: str, window_days: int = 30) -> str:
+    """Tier F gate: require >=1 A/B-grade evidence in the last ``window_days``
+    that did NOT come from a Serenity / X / Twitter / Nitter URL.
+
+    Returns "pass" or "fail" (never "unknown" — absence of independent
+    evidence is itself a fail).
+    """
+    bad_hosts = ("twitter.com", "x.com", "nitter", "serenity")
+    rows = cx.execute(
+        "SELECT IFNULL(source_url,'') AS source_url FROM evidence_log "
+        "WHERE ticker = ? AND grade IN ('A','B') "
+        "AND extracted_at >= datetime('now', ?)",
+        (ticker, f"-{int(window_days)} days"),
+    ).fetchall()
+    rel_rows = cx.execute(
+        "SELECT IFNULL(source_url,'') AS source_url FROM supplier_relationships "
+        "WHERE supplier_ticker = ? AND evidence_grade IN ('A','B') "
+        "AND verified_at >= datetime('now', ?)",
+        (ticker, f"-{int(window_days)} days"),
+    ).fetchall()
+    for r in [*rows, *rel_rows]:
+        url = (r["source_url"] or "").lower()
+        if not any(h in url for h in bad_hosts):
+            return "pass"
+    return "fail"
+
+
+def _info_edge_signal(cx, ticker: str, row: dict[str, Any]) -> str:
+    """Information-edge gate (Layer 0.2 of the first-principles checklist).
+
+    Serenity's edge only exists where coverage is small and mcap fits in a
+    discoverable acquisition. We pass when both are satisfied, watch when one
+    is, fail when neither, unknown when we don't have coverage data.
+    """
+    fund = cx.execute(
+        "SELECT sell_side_analysts FROM fundamentals WHERE ticker = ?",
+        (ticker,),
+    ).fetchone()
+    coverage = fund["sell_side_analysts"] if fund else None
+    mcap = row.get("market_cap_usd")
+    low_coverage = coverage is not None and coverage <= 5
+    small_cap = mcap is not None and mcap > 0 and mcap < 5_000_000_000
+    if coverage is None and mcap is None:
+        return "unknown"
+    if low_coverage and small_cap:
+        return "pass"
+    if low_coverage or small_cap:
+        return "watch"
+    return "fail"
+
+
+def _mispricing_signal(cx, ticker: str) -> str:
+    """Condition 2.4: cyclical / legacy drag mispricing.
+
+    pass    => (pb <= 2 OR pe <= 15) AND segment_growth_pct >= 20
+    watch   => any single cheap metric OR growth >= 20 alone
+    fail    => clearly overvalued: pb > 5 AND pe > 40 AND growth < 10
+    unknown => no fundamentals row
+    """
+    row = cx.execute(
+        "SELECT pb, pe, segment_growth_pct FROM fundamentals WHERE ticker = ?",
+        (ticker,),
+    ).fetchone()
+    if not row:
+        return "unknown"
+    pb = row["pb"]
+    pe = row["pe"]
+    growth = row["segment_growth_pct"]
+    cheap = (pb is not None and pb <= 2) or (pe is not None and pe <= 15)
+    fast = growth is not None and growth >= 20
+    if cheap and fast:
+        return "pass"
+    if (pb is not None and pb > 5) and (pe is not None and pe > 40) and (growth is not None and growth < 10):
+        return "fail"
+    if cheap or fast:
+        return "watch"
+    return "unknown"
+
+
 def _substitution_risk(cx, ticker: str) -> str:
     """Step 3: at least two short-term non-substitutable answers must hold."""
     row = cx.execute(
@@ -383,14 +462,34 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     # Step 10: Capital structure (same field reused)
     out["step_10"] = "pass" if flag == "clean" else "watch" if flag == "atm" else "fail" if flag == "redflag" else "unknown"
 
+    # Condition 2.4: cyclical/legacy drag mispricing (informational; gates Buy).
+    out["mispricing"] = _mispricing_signal(cx, row["ticker"])
+
+    # Information edge: small coverage + small cap is where her alpha lives.
+    out["info_edge"] = _info_edge_signal(cx, row["ticker"], row)
+
+    # Tier F: require an independent verification (non-Serenity source) within
+    # the last 30 days before promoting to Buy.
+    out["independent_verification"] = _independent_verification(cx, row["ticker"])
+
     # Overall decision
     hard_fails = [out[k] for k in ("step_minus1", "step_0", "step_1", "step_10") if out[k] == "fail"]
     if hard_fails:
         overall = "Pass"
     elif out["step_1"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
-        # Strong setup. Insiders actively selling, or an illiquid tape we can't
-        # build size in, tempers conviction down to Watch.
-        overall = "Watch" if out["step_6"] == "fail" or out["step_7"] == "fail" else "Buy"
+        # Strong setup. Insiders actively selling, illiquid tape, overvaluation,
+        # being a covered mega-cap, or missing independent verification all
+        # demote Buy -> Watch.
+        if (
+            out["step_6"] == "fail"
+            or out["step_7"] == "fail"
+            or out["mispricing"] == "fail"
+            or out["info_edge"] == "fail"
+            or out["independent_verification"] == "fail"
+        ):
+            overall = "Watch"
+        else:
+            overall = "Buy"
     elif out["step_6"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
         # Not A-grade evidence yet, but insiders are buying alongside a live
         # catalyst on a near-term clock — worth a Watch upgrade from Skip.

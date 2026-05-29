@@ -13,7 +13,44 @@ from .config import DB_PATH
 # ``schema_migrations``. Migrations must be idempotent-safe (use IF NOT EXISTS
 # / IF NOT EXISTS column probes) so re-running init() on a partially-migrated
 # DB is safe.
-MIGRATIONS: list[tuple[int, str]] = []
+MIGRATIONS: list[tuple[int, str]] = [
+    (
+        1,
+        """
+        CREATE TABLE IF NOT EXISTS fundamentals (
+            ticker              TEXT PRIMARY KEY,
+            measured_at         TEXT DEFAULT (datetime('now')),
+            pb                  REAL,
+            pe                  REAL,
+            ev_sales            REAL,
+            segment_growth_pct  REAL,
+            sell_side_analysts  INTEGER,
+            region              TEXT,
+            source_url          TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_fundamentals_segment_growth
+            ON fundamentals(segment_growth_pct);
+        """,
+    ),
+    (
+        2,
+        """
+        CREATE TABLE IF NOT EXISTS potential_acquirers (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_ticker           TEXT NOT NULL,
+            acquirer_name           TEXT NOT NULL,
+            acquirer_ticker         TEXT,
+            strategic_value_usd     REAL NOT NULL,
+            evidence_url            TEXT,
+            notes                   TEXT,
+            recorded_at             TEXT DEFAULT (datetime('now')),
+            UNIQUE(target_ticker, acquirer_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_potential_acquirers_target
+            ON potential_acquirers(target_ticker);
+        """,
+    ),
+]
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS chokepoints (
