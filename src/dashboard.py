@@ -24,7 +24,15 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src import db, pair_trade  # noqa: E402
+from src import (  # noqa: E402  # noqa: E402
+    capacity_tracker,
+    db,
+    governance,
+    pair_trade,
+    rotation,
+    signal_feeds,
+    supply_chain,
+)
 
 st.set_page_config(page_title="Serenity-Killer", page_icon="🎯", layout="wide")
 
@@ -160,6 +168,21 @@ with st.sidebar:
         with st.spinner("Asking Claude..."):
             tail = _run_cli("brief")
         st.code("\n".join(tail))
+
+    st.markdown("---")
+    st.markdown("### 🔧 Data Seeding")
+
+    if st.button("Seed all builtin data", width="stretch"):
+        with st.spinner("Seeding..."):
+            tail = _run_cli("seed_all")
+        st.code("\n".join(tail))
+        st.cache_data.clear()
+
+    if st.button("Scan signal feeds", width="stretch"):
+        with st.spinner("Scanning feeds..."):
+            tail = _run_cli("signals --all")
+        st.code("\n".join(tail))
+        st.cache_data.clear()
 
     st.markdown("---")
     st.caption("Full pipeline (~3-5 min): `py -m src.cli all`")
@@ -378,3 +401,151 @@ with st.expander("🐦 Smart-money tweets (full)"):
             tw, width="stretch", height=400,
             column_config={"url": st.column_config.LinkColumn("link")},
         )
+
+# ─── Section 8: Rotation signal ─────────────────────────────────────────────
+st.header("8) Sector rotation signal")
+try:
+    rotation_data = rotation.compute_rotation_signal()
+    if rotation_data:
+        rot_df = pd.DataFrame(rotation_data)
+        display_cols = [c for c in ["stage_idx", "theme", "avg_return_20d_pct", "signal", "rotation_to_next"] if c in rot_df.columns]
+        rot_styled = rot_df[display_cols].copy()
+        if "rotation_to_next" in rot_styled.columns:
+            rot_styled["rotation_to_next"] = rot_styled["rotation_to_next"].map({True: "🔄 ROTATE", False: ""})
+
+        def _rot_color(val):
+            colors = {"hot": "background-color: #d1fae5", "rolling": "background-color: #fef3c7",
+                       "cold": "background-color: #fee2e2", "unwinding": "background-color: #fecaca"}
+            return colors.get(val, "")
+
+        styled_rot = rot_styled.style.map(_rot_color, subset=["signal"]) if "signal" in rot_styled.columns else rot_styled
+        st.dataframe(styled_rot, width="stretch", height=240)
+    else:
+        st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
+except Exception:
+    st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
+
+# ─── Section 9: Supply chain graph ──────────────────────────────────────────
+st.header("9) Obvious-trade → supplier chain")
+try:
+    with db.connect() as cx:
+        obvious_tickers = [
+            r["obvious_ticker"]
+            for r in cx.execute(
+                "SELECT DISTINCT obvious_ticker FROM obvious_trade_supply_chain ORDER BY obvious_ticker"
+            ).fetchall()
+        ]
+    if obvious_tickers:
+        pick_obvious = st.selectbox("Pick an obvious-trade ticker", obvious_tickers, key="sc_pick")
+        suppliers = supply_chain.upstream_for(pick_obvious)
+        if suppliers:
+            sup_df = pd.DataFrame(suppliers)
+            display_sup = [c for c in ["supplier_ticker", "link_strength", "market_cap_usd", "overall", "rationale"] if c in sup_df.columns]
+            st.dataframe(
+                sup_df[display_sup], width="stretch",
+                column_config={
+                    "link_strength": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
+                    "market_cap_usd": st.column_config.NumberColumn(format="$%.0f"),
+                },
+            )
+        else:
+            st.caption(f"No upstream suppliers recorded for {pick_obvious}")
+    else:
+        st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
+except Exception:
+    st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
+
+# ─── Section 10: Capacity lifecycle ─────────────────────────────────────────
+st.header("10) Chokepoint capacity lifecycle")
+try:
+    lifecycles = capacity_tracker.all_lifecycles()
+    if lifecycles:
+        lc_df = pd.DataFrame(lifecycles)
+
+        def _exit_color(val):
+            return "background-color: #fee2e2; font-weight: bold" if val else ""
+
+        styled_lc = lc_df.style.map(_exit_color, subset=["exit_signal"]) if "exit_signal" in lc_df.columns else lc_df
+        st.dataframe(styled_lc, width="stretch", height=240)
+
+        # Show timeline chart for selected ticker
+        lc_tickers = lc_df["ticker"].tolist()
+        if lc_tickers:
+            pick_cap = st.selectbox("Capacity timeline for:", lc_tickers, key="cap_pick")
+            timeline = capacity_tracker.capacity_timeline(pick_cap)
+            if timeline:
+                t_df = pd.DataFrame(timeline)
+                chart_data = t_df.melt(
+                    id_vars=["quarter"],
+                    value_vars=["supply_units", "demand_units"],
+                    var_name="type",
+                    value_name="units",
+                )
+                chart = (
+                    alt.Chart(chart_data)
+                    .mark_bar(opacity=0.7)
+                    .encode(
+                        x=alt.X("quarter:N", title="Quarter"),
+                        y=alt.Y("units:Q", title="Units"),
+                        color=alt.Color("type:N", scale=alt.Scale(
+                            domain=["supply_units", "demand_units"],
+                            range=["#22c55e", "#ef4444"],
+                        )),
+                        xOffset="type:N",
+                        tooltip=["quarter:N", "type:N", "units:Q"],
+                    )
+                    .properties(height=300)
+                )
+                gap_chart = (
+                    alt.Chart(t_df)
+                    .mark_line(point=True, color="#f59e0b", strokeWidth=3)
+                    .encode(
+                        x=alt.X("quarter:N", title="Quarter"),
+                        y=alt.Y("gap_pct:Q", title="Gap %"),
+                        tooltip=["quarter:N", alt.Tooltip("gap_pct:Q", format=".1f")],
+                    )
+                    .properties(height=200)
+                )
+                st.altair_chart(chart, width="stretch")
+                st.altair_chart(gap_chart, width="stretch")
+    else:
+        st.info("Run `py -m src.cli capacity --builtin` to seed capacity data.")
+except Exception:
+    st.info("Run `py -m src.cli capacity --builtin` to seed capacity data.")
+
+# ─── Section 11: Signal feed alerts ─────────────────────────────────────────
+st.header("11) Signal feed alerts")
+try:
+    alerts = signal_feeds.unacknowledged_alerts(limit=30)
+    if alerts:
+        alert_df = pd.DataFrame(alerts)
+        display_alert = [c for c in ["alert_priority", "ticker", "source_type", "title", "created_at"] if c in alert_df.columns]
+
+        def _priority_color(val):
+            colors = {"critical": "background-color: #dc2626; color: white",
+                       "high": "background-color: #f97316; color: white",
+                       "medium": "background-color: #fbbf24",
+                       "low": "background-color: #e5e7eb"}
+            return colors.get(val, "")
+
+        styled_alerts = alert_df[display_alert].style.map(_priority_color, subset=["alert_priority"])
+        st.dataframe(styled_alerts, width="stretch", height=300)
+    else:
+        st.caption("No unacknowledged alerts. Run `py -m src.cli signals --all` to scan.")
+except Exception:
+    st.caption("Run `py -m src.cli signals --all` to scan for alerts.")
+
+# ─── Section 12: Governance / M&A signals ───────────────────────────────────
+st.header("12) Governance & M&A signals")
+try:
+    gov_events = governance.recent_events(limit=20)
+    if gov_events:
+        gov_df = pd.DataFrame(gov_events)
+        display_gov = [c for c in ["ticker", "event_type", "person_name", "role", "prior_ma_exp", "event_date", "notes"] if c in gov_df.columns]
+        if "prior_ma_exp" in gov_df.columns:
+            gov_df["prior_ma_exp"] = gov_df["prior_ma_exp"].map({1: "✅ M&A exp", 0: ""})
+        st.dataframe(gov_df[display_gov], width="stretch", height=240)
+    else:
+        st.info("Run `py -m src.cli governance --builtin` to seed governance events.")
+except Exception:
+    st.info("Run `py -m src.cli governance --builtin` to seed governance events.")

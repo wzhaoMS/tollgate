@@ -50,6 +50,122 @@ MIGRATIONS: list[tuple[int, str]] = [
             ON potential_acquirers(target_ticker);
         """,
     ),
+    (
+        3,
+        """
+        CREATE TABLE IF NOT EXISTS capacity_quarterly (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker                  TEXT NOT NULL,
+            quarter                 TEXT NOT NULL,
+            supply_units            REAL,
+            demand_units            REAL,
+            gap_pct                 REAL,
+            unit_label              TEXT DEFAULT 'units',
+            price_power             TEXT CHECK(price_power IN
+                ('very_high','high','neutral','low','collapse','unknown')) DEFAULT 'unknown',
+            capex_planned_usd       REAL,
+            expansion_online_date   TEXT,
+            source_url              TEXT,
+            assumptions             TEXT,
+            updated_at              TEXT DEFAULT (datetime('now')),
+            UNIQUE(ticker, quarter)
+        );
+        CREATE INDEX IF NOT EXISTS idx_capacity_quarterly_ticker
+            ON capacity_quarterly(ticker);
+        """,
+    ),
+    (
+        4,
+        """
+        CREATE TABLE IF NOT EXISTS customer_supplier_pages (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_ticker     TEXT NOT NULL,
+            page_url            TEXT NOT NULL,
+            page_label          TEXT,
+            last_snapshot_at    TEXT,
+            last_content_sha256 TEXT,
+            removed_names       TEXT,
+            added_names         TEXT,
+            check_interval_hrs  INTEGER DEFAULT 24,
+            enabled             INTEGER DEFAULT 1,
+            created_at          TEXT DEFAULT (datetime('now')),
+            UNIQUE(customer_ticker, page_url)
+        );
+        CREATE INDEX IF NOT EXISTS idx_csp_customer
+            ON customer_supplier_pages(customer_ticker);
+        """,
+    ),
+    (
+        5,
+        """
+        CREATE TABLE IF NOT EXISTS governance_events (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker              TEXT NOT NULL,
+            event_type          TEXT NOT NULL,
+            person_name         TEXT,
+            role                TEXT,
+            prior_ma_exp        INTEGER DEFAULT 0,
+            source_url          TEXT,
+            event_date          TEXT,
+            notes               TEXT,
+            discovered_at       TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_governance_events_ticker
+            ON governance_events(ticker);
+
+        CREATE TABLE IF NOT EXISTS customer_warrants (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            issuer_ticker       TEXT NOT NULL,
+            holder_name         TEXT NOT NULL,
+            holder_ticker       TEXT,
+            warrant_shares      REAL,
+            exercise_price_usd  REAL,
+            filing_type         TEXT,
+            filing_url          TEXT,
+            announced_at        TEXT,
+            notes               TEXT,
+            discovered_at       TEXT DEFAULT (datetime('now')),
+            UNIQUE(issuer_ticker, holder_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_customer_warrants_issuer
+            ON customer_warrants(issuer_ticker);
+
+        CREATE TABLE IF NOT EXISTS research_papers (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker              TEXT,
+            theme               TEXT,
+            title               TEXT NOT NULL,
+            authors             TEXT,
+            paper_url           TEXT,
+            abstract            TEXT,
+            relevance_score     REAL,
+            published_at        TEXT,
+            discovered_at       TEXT DEFAULT (datetime('now')),
+            UNIQUE(paper_url)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_papers_ticker
+            ON research_papers(ticker);
+
+        CREATE TABLE IF NOT EXISTS signal_feed_alerts (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type         TEXT NOT NULL,
+            source_name         TEXT,
+            ticker              TEXT,
+            keyword_matched     TEXT,
+            title               TEXT,
+            url                 TEXT,
+            snippet             TEXT,
+            alert_priority      TEXT CHECK(alert_priority IN
+                ('critical','high','medium','low')) DEFAULT 'medium',
+            acknowledged        INTEGER DEFAULT 0,
+            created_at          TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_signal_feed_alerts_ticker
+            ON signal_feed_alerts(ticker);
+        CREATE INDEX IF NOT EXISTS idx_signal_feed_alerts_unack
+            ON signal_feed_alerts(acknowledged, created_at);
+        """,
+    ),
 ]
 
 SCHEMA = r"""

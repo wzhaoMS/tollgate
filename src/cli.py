@@ -35,11 +35,13 @@ from . import (
     alpaca_paper,
     backtest,
     brief,
+    capacity_tracker,
     customer_universe,
     db,
     doctor,
     drawdown,
     exit_plan,
+    governance,
     ma_floor,
     pair_trade,
     risk_sizing,
@@ -47,7 +49,9 @@ from . import (
     runlog,
     scoring,
     seed,
+    seed_builtin,
     seed_signals,
+    signal_feeds,
     source_health,
     strategy_signals,
     supply_chain,
@@ -377,6 +381,205 @@ def cmd_backtest(args: list[str]) -> int:
     return 0
 
 
+def cmd_seed_all(args: list[str]) -> int:
+    results = seed_builtin.seed_all()
+    total = 0
+    for table, count in sorted(results.items()):
+        print(f"  {table}: +{count}")
+        total += count
+    # Also seed capacity quarterly + governance + supplier pages
+    cap_n = capacity_tracker.import_builtin_capacity()
+    gov_n = governance.import_builtin_events()
+    pages_n = signal_feeds.import_builtin_pages()
+    print(f"  capacity_quarterly: +{cap_n}")
+    print(f"  governance_events: +{gov_n}")
+    print(f"  customer_supplier_pages: +{pages_n}")
+    total += cap_n + gov_n + pages_n
+    print(f"seed_all: +{total} total rows across all tables")
+    return 0
+
+
+def cmd_signals(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="signals")
+    p.add_argument("--edgar", action="store_true", help="scan EDGAR EFTS for sole-source filings")
+    p.add_argument("--govt", action="store_true", help="scan Federal Register for CHIPS/semiconductor")
+    p.add_argument("--pages", action="store_true", help="check customer supplier page changes")
+    p.add_argument("--all", action="store_true", help="run all signal feed scans")
+    ns = p.parse_args(args)
+    if ns.all or not (ns.edgar or ns.govt or ns.pages):
+        results = signal_feeds.scan_all()
+        for src, n in sorted(results.items()):
+            print(f"  {src}: +{n} alert(s)")
+        print(f"signals: +{sum(results.values())} total")
+    else:
+        total = 0
+        if ns.edgar:
+            n = signal_feeds.scan_edgar_rss()
+            print(f"  edgar_rss: +{n}")
+            total += n
+        if ns.govt:
+            n = signal_feeds.scan_federal_register()
+            print(f"  federal_register: +{n}")
+            total += n
+        if ns.pages:
+            n = signal_feeds.scan_customer_pages()
+            print(f"  customer_pages: +{n}")
+            total += n
+        print(f"signals: +{total} alert(s)")
+    return 0
+
+
+def cmd_alerts(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="alerts")
+    p.add_argument("--limit", type=int, default=20, help="max alerts to show")
+    p.add_argument("--ack", type=int, help="acknowledge alert by ID")
+    ns = p.parse_args(args)
+    if ns.ack:
+        signal_feeds.acknowledge_alert(ns.ack)
+        print(f"acknowledged alert #{ns.ack}")
+        return 0
+    alerts = signal_feeds.unacknowledged_alerts(limit=ns.limit)
+    if not alerts:
+        print("No unacknowledged alerts.")
+        return 0
+    for a in alerts:
+        ticker = a.get("ticker") or "?"
+        print(
+            f"  [{a['alert_priority'].upper():>8}] #{a['id']} {ticker:<6} "
+            f"{a['source_type']}: {a['title'][:80]}"
+        )
+    print(f"{len(alerts)} unacknowledged alert(s)")
+    return 0
+
+
+def cmd_capacity(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="capacity")
+    p.add_argument("--builtin", action="store_true", help="seed builtin capacity data")
+    p.add_argument("--ticker", help="show capacity timeline for a ticker")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = capacity_tracker.import_builtin_capacity()
+        print(f"capacity: +{n} quarterly data rows")
+    if ns.ticker:
+        timeline = capacity_tracker.capacity_timeline(ns.ticker)
+        if not timeline:
+            print(f"{ns.ticker.upper()}: no capacity data")
+            return 0
+        print(f"{ns.ticker.upper()} capacity timeline:")
+        for row in timeline:
+            pp = row.get("price_power") or "?"
+            print(
+                f"  {row['quarter']}: supply={row['supply_units']:.0f} "
+                f"demand={row['demand_units']:.0f} gap={row['gap_pct']:.1f}% "
+                f"power={pp} ({row.get('unit_label', 'units')})"
+            )
+        lc = capacity_tracker.chokepoint_lifecycle(ns.ticker)
+        if lc:
+            print(
+                f"  lifecycle: gap={lc['current_gap_pct']:.1f}% trend={lc['gap_trend']} "
+                f"exit_signal={'YES' if lc['exit_signal'] else 'no'} "
+                f"close={lc.get('estimated_close') or 'n/a'}"
+            )
+    elif not ns.builtin:
+        lifecycles = capacity_tracker.all_lifecycles()
+        if not lifecycles:
+            print("No capacity data. Run `capacity --builtin` to seed.")
+            return 0
+        for lc in lifecycles:
+            print(
+                f"  {lc['ticker']:<6} gap={lc['current_gap_pct']:+.1f}% "
+                f"trend={lc['gap_trend']:<10} power={lc['current_price_power']:<10} "
+                f"exit={'⚠ YES' if lc['exit_signal'] else 'no'}"
+            )
+    return 0
+
+
+def cmd_governance(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="governance")
+    p.add_argument("--builtin", action="store_true", help="seed builtin governance events")
+    p.add_argument("--ticker", help="show events for a ticker")
+    p.add_argument("--ma-only", action="store_true", help="show only M&A signals")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = governance.import_builtin_events()
+        print(f"governance: +{n} event rows")
+    if ns.ma_only:
+        events = governance.ma_signals(ns.ticker)
+    elif ns.ticker:
+        events = governance.recent_events(ns.ticker)
+    else:
+        events = governance.recent_events()
+    for ev in events:
+        person = ev.get("person_name") or ""
+        ma = " [M&A]" if ev.get("prior_ma_exp") else ""
+        print(
+            f"  {ev['ticker']:<6} {ev['event_type']:<20} {ev.get('event_date') or '?':<12} "
+            f"{person}{ma} — {(ev.get('notes') or '')[:60]}"
+        )
+    if not ns.builtin and not events:
+        print("No governance events. Run `governance --builtin` to seed.")
+    return 0
+
+
+def cmd_supplier_pages(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="supplier_pages")
+    p.add_argument("--builtin", action="store_true", help="seed builtin supplier page registry")
+    p.add_argument("--scan", action="store_true", help="check all registered pages for changes")
+    ns = p.parse_args(args)
+    if ns.builtin:
+        n = signal_feeds.import_builtin_pages()
+        print(f"supplier_pages: +{n} page(s) registered")
+    if ns.scan:
+        n = signal_feeds.scan_customer_pages()
+        print(f"supplier_pages: +{n} change alert(s)")
+    if not ns.builtin and not ns.scan:
+        db.init()
+        with db.connect() as cx:
+            rows = cx.execute(
+                "SELECT customer_ticker, page_url, last_snapshot_at, enabled "
+                "FROM customer_supplier_pages ORDER BY customer_ticker"
+            ).fetchall()
+        if not rows:
+            print("No supplier pages registered. Run `supplier_pages --builtin`.")
+            return 0
+        for r in rows:
+            status = "✓" if r["last_snapshot_at"] else "pending"
+            enabled = "on" if r["enabled"] else "off"
+            print(f"  {r['customer_ticker']:<6} [{enabled}] {status} {r['page_url']}")
+    return 0
+
+
+def cmd_lifecycle(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="lifecycle")
+    p.add_argument("--ticker", help="show lifecycle for a specific ticker")
+    ns = p.parse_args(args)
+    if ns.ticker:
+        lc = capacity_tracker.chokepoint_lifecycle(ns.ticker)
+        if not lc:
+            print(f"{ns.ticker.upper()}: insufficient capacity data (need ≥2 quarters)")
+            return 0
+        print(f"{ns.ticker.upper()} chokepoint lifecycle:")
+        print(f"  Current gap: {lc['current_gap_pct']:.1f}%")
+        print(f"  Price power: {lc['current_price_power']}")
+        print(f"  Trend: {lc['gap_trend']}")
+        print(f"  Est. gap close: {lc.get('estimated_close') or 'n/a'}")
+        print(f"  EXIT SIGNAL: {'⚠ YES — consider reducing' if lc['exit_signal'] else 'No'}")
+        return 0
+    lifecycles = capacity_tracker.all_lifecycles()
+    if not lifecycles:
+        print("No capacity data. Run `capacity --builtin` first.")
+        return 0
+    print("Chokepoint lifecycle summary:")
+    for lc in lifecycles:
+        exit_flag = " ⚠EXIT" if lc["exit_signal"] else ""
+        print(
+            f"  {lc['ticker']:<6} gap={lc['current_gap_pct']:+.1f}% "
+            f"trend={lc['gap_trend']:<10} power={lc['current_price_power']:<10}"
+            f"{exit_flag}"
+        )
+    return 0
+
+
 def cmd_paper(args: list[str]) -> int:
     alpaca_paper.main()
     return 0
@@ -463,6 +666,7 @@ def cmd_all(args: list[str]) -> int:
         steps: list[tuple[str, object, list[str], bool]] = [
             ("backup",        cmd_backup,        [],                                False),
             ("seed",          cmd_seed,          [],                                True),
+            ("seed_all",      cmd_seed_all,      [],                                False),
             ("prices",        cmd_prices,        [],                                False),
             ("harvest",       cmd_harvest,       [],                                False),
             ("fulltext-8K",   cmd_fulltext,      ["--form", "8-K", "--limit", "60"], False),
@@ -471,6 +675,7 @@ def cmd_all(args: list[str]) -> int:
             ("insider",       cmd_insider,       [],                                False),
             ("tweets",        cmd_tweets,        [],                                False),
             ("diffwatch",     cmd_diffwatch,     [],                                False),
+            ("signals",       cmd_signals,       ["--all"],                         False),
             ("enrich",        cmd_enrich,        [],                                False),
             ("score",         cmd_score,         [],                                True),
             ("paper",         cmd_paper,         [],                                False),
@@ -535,9 +740,16 @@ COMMANDS = {
     "seed_serenity": cmd_seed_serenity,
     "seed_followers": cmd_seed_followers,
     "seed_govt": cmd_seed_govt,
+    "seed_all": cmd_seed_all,
     "mafloor": cmd_mafloor,
     "rotation": cmd_rotation,
     "supplychain": cmd_supplychain,
+    "signals": cmd_signals,
+    "alerts": cmd_alerts,
+    "capacity": cmd_capacity,
+    "governance": cmd_governance,
+    "supplier_pages": cmd_supplier_pages,
+    "lifecycle": cmd_lifecycle,
     "all": cmd_all,
 }
 
