@@ -681,3 +681,17 @@ try:
         st.info("Run `py -m src.cli governance --builtin` to seed governance events.")
 except Exception:
     st.info("Run `py -m src.cli governance --builtin` to seed governance events.")
+
+# ─── Disclaimer ─────────────────────────────────────────────────────────────
+st.divider()
+st.caption(
+    "⚠️ **Disclaimer** — Tollgate is a personal, educational research project provided "
+    "\"as is\" with **no warranty**. Nothing on this dashboard constitutes investment advice, "
+    "a recommendation, or a solicitation to buy or sell any security. The author is not a "
+    "registered investment adviser and holds no fiduciary duty to you. All data, scores, "
+    "signals, and outputs are mechanical heuristics — not verified truth. Small-cap stocks "
+    "routinely fall 25%+ in a single session. **Do your own research; trade your own risk.** "
+    "This project is not affiliated with, endorsed by, or representative of any individual "
+    "or company referenced. See the full "
+    "[DISCLAIMER](https://github.com/wzhaoMS/tollgate/blob/main/DISCLAIMER.md)."
+)
