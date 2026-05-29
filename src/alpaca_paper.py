@@ -8,13 +8,12 @@ This is intentionally tiny: 1 ticker = 1 share. Position sizing per the
 playbook (Step 11) lives in src.risk_sizing once we wire it in.
 """
 from __future__ import annotations
+
 import os
-from typing import Iterable
 
 import requests
 
 from . import db, paper, scoring
-from .config import DATA_DIR
 
 ALPACA_BASE = os.environ.get("ALPACA_BASE", "https://paper-api.alpaca.markets")
 KEY = os.environ.get("ALPACA_KEY", "").strip()

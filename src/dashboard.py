@@ -10,6 +10,7 @@ Audited fixes:
 - Ticker drill-down with filings + tweets + insider history.
 """
 from __future__ import annotations
+
 import datetime as dt
 import subprocess
 import sys

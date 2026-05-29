@@ -8,8 +8,6 @@ We define theme implicitly from the `chokepoint` text column (rough but enough
 for v0). A future version reads from a tagged taxonomy.
 """
 from __future__ import annotations
-import re
-from typing import Iterable
 
 from . import db
 

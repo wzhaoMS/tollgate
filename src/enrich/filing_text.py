@@ -4,16 +4,16 @@ run a Claude extraction prompt to pull structured evidence.
 This is the bridge from 'we saw a headline' to 'we have an A/B/C grade'.
 """
 from __future__ import annotations
-import json
+
 import re
 import time
 from urllib.parse import urljoin
 
 import requests
 
+from .. import db
 from ..bridge_client import ask_json
 from ..config import EDGAR_RPS, EDGAR_USER_AGENT
-from .. import db
 
 _HTML_TAG = re.compile(r"<[^>]+>")
 _WHITESPACE = re.compile(r"\s+")

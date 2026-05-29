@@ -5,6 +5,7 @@ For richer JS-rendered pages this is a coarse approximation, but for static
 "partners" / "suppliers" pages on company websites it's enough.
 """
 from __future__ import annotations
+
 import hashlib
 import re
 import time
@@ -12,7 +13,6 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-from ..config import EDGAR_USER_AGENT
 from .. import db
 
 WATCH_URLS = [

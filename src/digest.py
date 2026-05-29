@@ -8,10 +8,13 @@ Sections:
   5) Exit-trigger alerts (if any open positions)
 """
 from __future__ import annotations
+
 import datetime as dt
+
 import requests
+
+from . import db, drawdown, scoring
 from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from . import db, scoring, drawdown
 
 
 def render_markdown() -> str:

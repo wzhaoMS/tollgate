@@ -1,5 +1,6 @@
 """Smoke tests: schema creation, seed load, keyword filter, scorer + pair gen."""
 from __future__ import annotations
+
 import os
 import sys
 import tempfile
@@ -14,8 +15,8 @@ def test_end_to_end():
     os.environ["DB_PATH"] = str(tmp)
     for mod in [m for m in list(sys.modules) if m.startswith("src.")]:
         del sys.modules[mod]
-    from src import db, seed, scoring, pair_trade, paper, drawdown
-    from src.scrapers import edgar, customer_diff
+    from src import db, drawdown, pair_trade, paper, scoring, seed
+    from src.scrapers import customer_diff, edgar
 
     db.init()
     n_seed = seed.load_seed_csv()

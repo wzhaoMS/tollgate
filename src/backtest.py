@@ -10,9 +10,10 @@ because Steps 1/8/9 require static metadata. It's still useful: it tells you
 how well the contamination flag predicts forward returns.
 """
 from __future__ import annotations
+
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from . import db
 

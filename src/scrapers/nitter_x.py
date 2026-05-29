@@ -8,17 +8,18 @@ The list of handles is loaded from `data/handles.json` so it can grow without
 editing this file. Falls back to DEFAULT_HANDLES if the file is missing.
 """
 from __future__ import annotations
+
 import json
 import re
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import feedparser
 import requests
 
-from ..config import DATA_DIR, EDGAR_USER_AGENT  # reuse polite UA
 from .. import db
+from ..config import DATA_DIR, EDGAR_USER_AGENT  # reuse polite UA
 
 NITTER_INSTANCES = [
     "https://nitter.net",

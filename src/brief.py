@@ -5,7 +5,9 @@ Usage:
   py -m src.brief        # print to stdout
 """
 from __future__ import annotations
+
 import datetime as dt
+
 from . import db
 from .bridge_client import chat
 

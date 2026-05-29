@@ -1,10 +1,12 @@
 """Load the seed chokepoint-database.csv into SQLite + write keyword dictionary."""
 from __future__ import annotations
+
 import csv
 import json
 from pathlib import Path
-from .config import DATA_DIR
+
 from . import db
+from .config import DATA_DIR
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED_CSV = ROOT / "chokepoint-database.csv"

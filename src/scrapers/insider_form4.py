@@ -9,6 +9,7 @@ Note: EDGAR's ``type`` filter is a prefix match (``type=4`` also returns 40-F,
 fetching it.
 """
 from __future__ import annotations
+
 import re
 import time
 from urllib.parse import urljoin
@@ -17,8 +18,8 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-from ..config import EDGAR_RPS, EDGAR_USER_AGENT
 from .. import db
+from ..config import EDGAR_RPS, EDGAR_USER_AGENT
 
 # Per-company query: ``CIK`` accepts a ticker symbol and EDGAR resolves it.
 COMPANY_ATOM = (

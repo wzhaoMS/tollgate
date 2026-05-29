@@ -1,8 +1,11 @@
 """Thin client for the local Copilot bridge (chat completions, OpenAI-compatible)."""
 from __future__ import annotations
+
 import json
+
 import requests
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
 from .config import BRIDGE_API_KEY, BRIDGE_BASE_URL, BRIDGE_MODEL
 
 

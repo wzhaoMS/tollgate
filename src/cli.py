@@ -17,110 +17,146 @@ Commands:
     backtest    - replay crowd-contamination flag against forward returns
     digest      - print + (optionally) post daily digest
     brief       - LLM-written weekly brief from filings + tweets + movers
+    doctor      - validate configuration + environment (run this first)
     all         - run the full daily pipeline
 """
 from __future__ import annotations
+
+import argparse
 import sys
 
-from . import db, seed, scoring, digest as digest_mod, pair_trade, drawdown, brief, backtest, alpaca_paper
-from .scrapers import edgar, yf_prices, insider_form4, nitter_x, customer_diff
-from .enrich import filing_text, filing_full
+from . import alpaca_paper, backtest, brief, db, doctor, drawdown, pair_trade, scoring, seed
+from . import digest as digest_mod
+from .enrich import filing_full, filing_text
+from .scrapers import customer_diff, edgar, insider_form4, nitter_x, yf_prices
 
 
-def cmd_init() -> int:
+def cmd_init(args: list[str]) -> int:
     db.init()
     print(f"DB initialized at {db.DB_PATH}")  # type: ignore[attr-defined]
     return 0
 
 
-def cmd_seed() -> int:
+def cmd_seed(args: list[str]) -> int:
     seed.main()
     return 0
 
 
-def cmd_harvest() -> int:
-    edgar.main()
+def cmd_harvest(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="harvest")
+    p.add_argument("--per-form", type=int, default=40, help="filings per form per ticker")
+    p.add_argument("--firehose", action="store_true", help="use market-wide getcurrent feed")
+    p.add_argument("--ticker", action="append", help="limit to specific ticker(s)")
+    ns = p.parse_args(args)
+    tickers = ns.ticker if ns.ticker else ([] if ns.firehose else None)
+    n = edgar.harvest(per_form=ns.per_form, tickers=tickers)
+    print(f"Inserted {n} new filings.")
     return 0
 
 
-def cmd_enrich() -> int:
+def cmd_enrich(args: list[str]) -> int:
     filing_text.main()
     return 0
 
 
-def cmd_prices() -> int:
+def cmd_prices(args: list[str]) -> int:
     yf_prices.main()
     return 0
 
 
-def cmd_insider() -> int:
-    insider_form4.main()
+def cmd_insider(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="insider")
+    p.add_argument("--count", type=int, default=40, help="Form 4 filings per ticker")
+    p.add_argument("--ticker", action="append", help="limit to specific ticker(s)")
+    ns = p.parse_args(args)
+    n = insider_form4.harvest(count=ns.count, tickers=ns.ticker)
+    print(f"Inserted {n} insider transactions.")
     return 0
 
 
-def cmd_tweets() -> int:
+def cmd_tweets(args: list[str]) -> int:
     nitter_x.main()
     return 0
 
 
-def cmd_diffwatch() -> int:
+def cmd_diffwatch(args: list[str]) -> int:
     customer_diff.main()
     return 0
 
 
-def cmd_score() -> int:
+def cmd_score(args: list[str]) -> int:
     scoring.main()
     return 0
 
 
-def cmd_pairs() -> int:
+def cmd_pairs(args: list[str]) -> int:
     pair_trade.main()
     return 0
 
 
-def cmd_monitor() -> int:
+def cmd_monitor(args: list[str]) -> int:
     drawdown.main()
     return 0
 
 
-def cmd_digest() -> int:
+def cmd_digest(args: list[str]) -> int:
     digest_mod.main()
     return 0
 
 
-def cmd_brief() -> int:
+def cmd_brief(args: list[str]) -> int:
     brief.main()
     return 0
 
 
-def cmd_fulltext() -> int:
-    filing_full.main()
+def cmd_doctor(args: list[str]) -> int:
+    return doctor.run()
+
+
+def cmd_fulltext(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="fulltext")
+    p.add_argument("--limit", type=int, default=25, help="number of filings to fetch")
+    p.add_argument("--form", action="append", help="restrict to specific form type(s), e.g. 10-K")
+    p.add_argument("--all-forms", action="store_true", help="fetch all form types, not just 8-K")
+    ns = p.parse_args(args)
+    if ns.form:
+        forms = tuple(ns.form)
+    elif ns.all_forms:
+        forms = None
+    else:
+        forms = ("8-K",)
+    res = filing_full.fetch_recent(limit=ns.limit, forms=forms)
+    print(
+        f"filing-text fetch: +{res['fetched']} full docs, "
+        f"skipped={res['skipped']}, errors={res['errors']}, "
+        f"govt-flagged filings now={res['govt']}"
+    )
     return 0
 
 
-def cmd_backtest() -> int:
+def cmd_backtest(args: list[str]) -> int:
     backtest.main()
     return 0
 
 
-def cmd_paper() -> int:
+def cmd_paper(args: list[str]) -> int:
     alpaca_paper.main()
     return 0
 
 
-def cmd_all() -> int:
-    cmd_seed()
-    cmd_prices()
-    cmd_harvest()
-    cmd_fulltext()
-    cmd_insider()
-    cmd_tweets()
-    cmd_diffwatch()
-    cmd_enrich()
-    cmd_score()
-    cmd_paper()
-    cmd_monitor()
-    cmd_digest()
+def cmd_all(args: list[str]) -> int:
+    cmd_seed(args)
+    cmd_prices(args)
+    cmd_harvest([])
+    cmd_fulltext([])
+    cmd_insider([])
+    cmd_tweets(args)
+    cmd_diffwatch(args)
+    cmd_enrich(args)
+    cmd_score(args)
+    cmd_paper(args)
+    cmd_monitor(args)
+    cmd_digest(args)
     return 0
 
 
@@ -141,12 +177,13 @@ COMMANDS = {
     "backtest": cmd_backtest,
     "digest": cmd_digest,
     "brief": cmd_brief,
+    "doctor": cmd_doctor,
     "all": cmd_all,
 }
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv or sys.argv[1:]
+    argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in {"-h", "--help"}:
         print(__doc__)
         return 0
@@ -156,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Unknown command: {cmd}\n")
         print(__doc__)
         return 2
-    return int(fn() or 0)
+    return int(fn(argv[1:]) or 0)
 
 
 if __name__ == "__main__":

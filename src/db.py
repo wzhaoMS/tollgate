@@ -1,9 +1,11 @@
 """SQLite schema + thin DB helpers. Schema is created idempotently on init()."""
 from __future__ import annotations
+
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Iterator
+
 from .config import DB_PATH
 
 SCHEMA = r"""

@@ -5,6 +5,7 @@ Emit Telegram-ready alert lines for hard stops (-40% from cost) and the
 +200% / +500% take-profit ladder defined in risk-management.md.
 """
 from __future__ import annotations
+
 from . import db
 
 

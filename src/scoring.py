@@ -5,7 +5,9 @@ cannot determine returns 'unknown' rather than a false positive — Serenity's
 biggest mistake is letting weak evidence look like strong evidence.
 """
 from __future__ import annotations
+
 from typing import Any
+
 from . import db
 
 
@@ -107,11 +109,22 @@ _GOVT_KEYWORDS = (
 def _govt_backstop(cx, ticker: str, row: dict[str, Any]) -> str:
     """Detect a government backstop (downside floor) for a ticker.
 
-    Scans the curated row's free-text fields plus any harvested evidence
-    excerpts for CHIPS/DoE/DPA-style funding language.
+    Layered, cheapest-first:
+      1. The harvested filings' ``keyword_hits`` already flag the ``govt_backstop``
+         bucket whenever CHIPS/DoE/DPA language appears in a filing body.
+      2. Otherwise scan the curated row's free-text + any harvested evidence
+         excerpts + recent filing bodies for the keyword list.
     pass    => backstop language found
     unknown => nothing found (absence of evidence, not evidence of absence)
     """
+    govt_hit = cx.execute(
+        "SELECT 1 FROM filings WHERE ticker = ? "
+        "AND keyword_hits LIKE '%govt_backstop%' LIMIT 1",
+        (ticker,),
+    ).fetchone()
+    if govt_hit:
+        return "pass"
+
     haystacks = [
         (row.get("next_catalyst") or ""),
         (row.get("notes") or ""),

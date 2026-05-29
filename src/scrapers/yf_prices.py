@@ -6,9 +6,9 @@ Crowd flag logic (Step -1 of the playbook, automated):
   low    => otherwise
 """
 from __future__ import annotations
+
 import time
 from datetime import date, timedelta
-from typing import Iterable
 
 from .. import db
 
