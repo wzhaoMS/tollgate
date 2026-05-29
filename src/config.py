@@ -39,5 +39,9 @@ EDGAR_RPS = float(os.environ.get("EDGAR_RPS", "5"))
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 
-DB_PATH = Path(os.environ.get("DB_PATH", str(DATA_DIR / "playbook.db")))
+_db_path = Path(os.environ.get("DB_PATH", str(DATA_DIR / "playbook.db")))
+# Resolve a relative DB_PATH against the repo root so launching from any
+# working directory (e.g. `streamlit run` from the home dir) hits the same DB
+# instead of silently creating a stray empty database.
+DB_PATH = _db_path if _db_path.is_absolute() else (ROOT / _db_path)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)

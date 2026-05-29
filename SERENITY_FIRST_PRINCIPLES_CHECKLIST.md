@@ -17,6 +17,65 @@ and falsifiable — instead of a vibe trade.
 
 ---
 
+## ✅ Re-audited mapping — 2026-05-29 (verified, not trusted)
+
+> Re-run independently: `pytest` **124 passed**, `ruff` **clean**, `doctor`
+> **0 errors / 0 warnings**, DB **33 tables**. Status below was confirmed by
+> reading the actual modules + `PRAGMA table_info` + row counts, **not** by
+> trusting prior agent notes.
+>
+> **Headline finding:** almost every piece of *schema + scoring logic* already
+> exists. The real gap is **(a) live data population (most new tables have 0
+> rows)** and **(b) external signal-feed fetchers (none exist yet).** Legend:
+> ✅ done & working · ⚠️ logic/schema present but unpopulated or partial · ❌ missing.
+
+### Part 1 — The 9-step independent verify checklist (run on any of her tickers)
+
+| # | Step | Where it lives | Status |
+|---|---|---|---|
+| 0 | Liquidity-trap (>24h after tweet & >15% move ⇒ pass) | `scoring._serenity_liquidity_trap` → `step_minus1`; table `serenity_signals` | ⚠️ logic ✅, `serenity_signals` = **0 rows** (seed via `seed_serenity`) |
+| 1 | Customer-filing reverse-verify (sole/single/primary source) | `enrich/customer_relationships` + `supplier_relationships` + `customer_harvest` CLI | ⚠️ code ✅, data blocked by EDGAR 403 throttle |
+| 2 | Physical capacity (supply vs demand, gap %, expansion cycle) | `scoring._capacity_signal` (`step_2`) + table `capacity_models` | ⚠️ heuristic ✅; `capacity_models` = **0 rows**, **no populate CLI** |
+| 3 | Substitution risk (material / supplier / self-build) | `scoring._substitution_risk` (`step_3`) | ✅ |
+| 4 | Government backstop (CHIPS/NIST/EU, funding >$10M) | `scoring._govt_backstop` (`step_4`) + `govt_awards` | ⚠️ logic ✅ + 6 seeded awards; **live feed fetchers ❌** |
+| 5 | M&A floor (`max(2×mcap, strat/50) > 1.5×mcap`) | `scoring._ma_floor_signal` (`step_5`) + `ma_floor` CLI | ✅ (11 acquirers, 2 floors computed) |
+| 6 | Insider behaviour (Form 4 open-market buys) | `scoring._insider_signal` (`step_6`) | ✅ |
+| 7 | Float / short-interest / days-to-exit (≤3 days) | `scoring._float_exit_liquidity` + `_liquidity` (`step_7`) + table `float_short_interest` | ⚠️ logic ✅; `float_short_interest` = **0 rows** (short-% not fed) |
+| 8 | Re-rate trigger within 90 days | `scoring._catalyst_signal` (`step_8`) + `catalyst_events` | ⚠️ logic ✅, needs earnings/GTC calendar data |
+| 9 | Position sizing (quarter-Kelly, 5% / 15% caps, −40% stop) | `risk_sizing.kelly_lite_pct` + `calculate_position_size` + `size` CLI | ✅ **NOTE:** scoring's `step_9` is *catalyst-timing*, the sizing step lives in `risk_sizing`, not in the 0–10 score row |
+
+### Part 2 — Serenity 2.0 structural upgrades
+
+| # | Upgrade | Where it lives | Status |
+|---|---|---|---|
+| 1 | Signal lead-time feeds (SEC RSS, NIST/Federal Register, EU CHIPS, Visualping, Scholar, LinkedIn, warrants, vendor slides) | table `source_feed_status` + `sources` CLI; scrapers: `edgar`, `customer_diff`, `insider_form4`, `nitter_x`, `yf_prices` | ❌ **biggest gap** — only status tracker (0 rows); no NIST/FederalReg/EU/Scholar/Visualping/LinkedIn/warrant/slide fetchers |
+| 2 | Physical capacity audit (quarterly supply/demand/gap/price-power) | table `capacity_models` (cols: period, supply_units, demand_units, gap_pct, expansion_timeline_mo) | ⚠️ **schema exact-match ✅** but 0 rows + no CLI to enter/compute it |
+| 3 | True-vs-Consensus 2-axis model | `strategy_signals.true_vs_consensus` + table `consensus_metrics` + `consensus` CLI | ⚠️ logic ✅, `consensus_metrics` = **0 rows** |
+| 4 | Follower-count reverse indicator | `strategy_signals.follower_growth_pct` + `reverse_crowd_alerts` + `follower_history` + `reverse` CLI | ⚠️ logic ✅; `follower_history` = **0 rows**, no scraper to populate daily |
+| 5 | Pair trades (Long chokepoint / Short rich peer) | `pair_trade` (`candidates`, `sync_watchlist`, `hedge_notional`) + `pairs` / `pairwatch` CLI | ✅ working |
+| 6 | Exit discipline (preset take-profit / trailing / −40% stop) | `exit_plan.ensure_default` + `drawdown.evaluate` + `exitplans` / `monitor` CLI | ✅ working |
+
+### Part 3 — 5 things actionable today
+
+| # | Action | Status / what's needed |
+|---|---|---|
+| 1 | Build signal feed (RSS + Visualping + Scholar alerts) | ❌ **needs new fetchers** (see Part 2 #1 / Tier C) |
+| 2 | Run the 9-step checklist on all her holdings | ✅ `py -m src.cli score` produces step_-1..10; ⚠️ seed her holdings + `serenity_signals` first |
+| 3 | Build a capacity-audit table | ⚠️ `capacity_models` exists — needs a `capacity` CLI to populate + feed `step_2` |
+| 4 | Follower-count reverse-indicator script | ✅ `reverse` CLI logic exists; ⚠️ needs a daily follower scraper |
+| 5 | Open 2 paper pair trades (XFAB/WOLF, SIVE/LITE) | ✅ `pair_trade.candidates` + `pairwatch` already track these |
+
+### Verified missing pieces (do these next)
+
+1. **External signal-feed fetchers** (Part 2 #1 / Part 3 #1) — NIST, Federal Register, EU CHIPS, Google Scholar, Visualping/ChangeDetection, LinkedIn, customer-warrant (8-K), vendor-slide. Only `source_feed_status` tracking exists.
+2. **`capacity` CLI + populator** for `capacity_models` (Part 2 #2 / Part 3 #3) — table is ready, no way to fill it, and `_capacity_signal` does not yet read it.
+3. **Daily follower scraper** to fill `follower_history` so `reverse` produces live alerts (Part 2 #4 / Part 3 #4).
+4. **Short-interest feed** into `float_short_interest` so `step_7` uses real SI% (Part 1 #7).
+5. **Data population** of `serenity_signals`, `consensus_metrics`, `catalyst_events` (all 0 rows) — every gate's *logic* is built and tested but starved of inputs.
+6. **Dashboard panels** for rotation, supply-chain upstream, M&A-floor acquirer drilldown, capacity audit (none wired into `src/dashboard.py` yet).
+
+---
+
 ## Layer 0 — Four underlying economic principles
 
 | # | Principle | Code/data needed | Current status |
