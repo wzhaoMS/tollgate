@@ -282,12 +282,20 @@ else:
     st.dataframe(
         merged[display_cols], width="stretch", height=420,
         column_config={
+            "ticker": "Ticker",
+            "chokepoint": "Chokepoint",
+            "end_customer": "End Customer",
+            "evidence_grade": "Evidence",
             "market_cap_usd": st.column_config.NumberColumn("Mkt Cap ($B)", format="$%.2fB"),
-            "ev_sales": st.column_config.NumberColumn(format="%.1fx"),
-            "catalyst_score": st.column_config.ProgressColumn(min_value=0, max_value=10, format="%d"),
-            "pct_change_5d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "pct_change_20d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "volume_ratio_20d": st.column_config.NumberColumn(format="%.2fx"),
+            "ev_sales": st.column_config.NumberColumn("EV/Sales", format="%.1fx"),
+            "next_catalyst": "Next Catalyst",
+            "catalyst_score": st.column_config.ProgressColumn("Catalyst", min_value=0, max_value=10, format="%d"),
+            "crowd_flag": "Crowd Flag",
+            "last_close": st.column_config.NumberColumn("Last Close", format="$%.2f"),
+            "pct_change_5d": st.column_config.NumberColumn("5d Chg", format="%+.1f%%"),
+            "pct_change_20d": st.column_config.NumberColumn("20d Chg", format="%+.1f%%"),
+            "volume_ratio_20d": st.column_config.NumberColumn("Vol Ratio", format="%.2fx"),
+            "decision": "Decision",
         },
     )
 
@@ -412,8 +420,13 @@ try:
             width="stretch",
             height=min(56 + len(lc_df) * 36, 400),
             column_config={
+                "ticker": "Ticker",
                 "current_gap_pct": st.column_config.NumberColumn("Gap %", format="%.1f%%"),
-                "data_points": st.column_config.NumberColumn("Data pts"),
+                "current_price_power": "Price Power",
+                "gap_trend": "Trend",
+                "estimated_close": "Est. Close",
+                "exit_signal": "Exit Signal",
+                "data_points": st.column_config.NumberColumn("Data Pts"),
             },
         )
     else:
@@ -448,9 +461,21 @@ else:
             "unknown": "color: #6b7280",
         }.get(str(val).lower().strip(), "")
 
+    _SCORE_COL_LABELS = {
+        "ticker": "Ticker", "overall": "Overall",
+        "step_minus1": "Crowd/Trap", "step_0": "Adverse Sel.",
+        "step_1": "Evidence", "step_2": "Capacity",
+        "step_3": "Substitution", "step_4": "Govt Backstop",
+        "step_5": "M&A Floor", "step_6": "Insider",
+        "step_7": "Liquidity", "step_8": "Catalyst",
+        "step_9": "Time-to-Truth", "step_10": "Cap Structure",
+        "mispricing": "Mispricing", "info_edge": "Info Edge",
+        "independent_verification": "Indep. Verify",
+    }
     step_cols = [c for c in ordered.columns if c.startswith("step_")]
     styled = ordered.style.map(_color, subset=["overall"]).map(_step_color, subset=step_cols)
-    st.dataframe(styled, width="stretch", height=360)
+    st.dataframe(styled, width="stretch", height=360,
+                 column_config={col: label for col, label in _SCORE_COL_LABELS.items() if col in ordered.columns})
 
 # Section 5 — pair trades
 st.header("5) Pair-trade candidates")
@@ -461,9 +486,12 @@ else:
     st.dataframe(
         pairs, width="stretch",
         column_config={
-            "long_20d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "short_20d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "spread_pct": st.column_config.NumberColumn(format="%+.1f%%"),
+            "theme": "Theme",
+            "long": "Long",
+            "long_20d": st.column_config.NumberColumn("Long 20d", format="%+.1f%%"),
+            "short": "Short",
+            "short_20d": st.column_config.NumberColumn("Short 20d", format="%+.1f%%"),
+            "spread_pct": st.column_config.NumberColumn("Spread", format="%+.1f%%"),
         },
     )
 
@@ -475,9 +503,12 @@ else:
     st.dataframe(
         positions, width="stretch",
         column_config={
-            "cost_basis": st.column_config.NumberColumn(format="$%.2f"),
-            "last_price": st.column_config.NumberColumn(format="$%.2f"),
-            "pnl_pct": st.column_config.NumberColumn(format="%+.1f%%"),
+            "ticker": "Ticker",
+            "shares": "Shares",
+            "cost_basis": st.column_config.NumberColumn("Cost Basis", format="$%.2f"),
+            "last_price": st.column_config.NumberColumn("Last Price", format="$%.2f"),
+            "pnl_pct": st.column_config.NumberColumn("P&L %", format="%+.1f%%"),
+            "opened_at": "Opened",
         },
     )
 
@@ -550,7 +581,14 @@ try:
             return colors.get(val, "")
 
         styled_rot = rot_styled.style.map(_rot_color, subset=["signal"]) if "signal" in rot_styled.columns else rot_styled
-        st.dataframe(styled_rot, width="stretch", height=240)
+        st.dataframe(styled_rot, width="stretch", height=240,
+                     column_config={
+                         "stage_idx": "Stage",
+                         "theme": "Theme",
+                         "avg_return_20d_pct": st.column_config.NumberColumn("Avg 20d Return", format="%+.1f%%"),
+                         "signal": "Signal",
+                         "rotation_to_next": "Rotation",
+                     })
     else:
         st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
 except Exception:
@@ -577,8 +615,11 @@ try:
             st.dataframe(
                 sup_df[display_sup], width="stretch",
                 column_config={
-                    "link_strength": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
+                    "supplier_ticker": "Supplier",
+                    "link_strength": st.column_config.ProgressColumn("Link Strength", min_value=0, max_value=1, format="%.2f"),
                     "market_cap_usd": st.column_config.NumberColumn("Mkt Cap ($B)", format="$%.2fB"),
+                    "overall": "Score",
+                    "rationale": "Rationale",
                 },
             )
         else:
@@ -604,7 +645,14 @@ try:
             return colors.get(val, "")
 
         styled_alerts = alert_df[display_alert].style.map(_priority_color, subset=["alert_priority"])
-        st.dataframe(styled_alerts, width="stretch", height=300)
+        st.dataframe(styled_alerts, width="stretch", height=300,
+                     column_config={
+                         "alert_priority": "Priority",
+                         "ticker": "Ticker",
+                         "source_type": "Source",
+                         "title": "Alert",
+                         "created_at": "Created",
+                     })
     else:
         st.caption("No unacknowledged alerts. Run `py -m src.cli signals --all` to scan.")
 except Exception:
@@ -619,7 +667,16 @@ try:
         display_gov = [c for c in ["ticker", "event_type", "person_name", "role", "prior_ma_exp", "event_date", "notes"] if c in gov_df.columns]
         if "prior_ma_exp" in gov_df.columns:
             gov_df["prior_ma_exp"] = gov_df["prior_ma_exp"].map({1: "✅ M&A exp", 0: ""})
-        st.dataframe(gov_df[display_gov], width="stretch", height=240)
+        st.dataframe(gov_df[display_gov], width="stretch", height=240,
+                     column_config={
+                         "ticker": "Ticker",
+                         "event_type": "Event Type",
+                         "person_name": "Person",
+                         "role": "Role",
+                         "prior_ma_exp": "M&A Exp.",
+                         "event_date": "Date",
+                         "notes": "Notes",
+                     })
     else:
         st.info("Run `py -m src.cli governance --builtin` to seed governance events.")
 except Exception:
