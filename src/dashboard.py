@@ -34,7 +34,7 @@ from src import (  # noqa: E402  # noqa: E402
     supply_chain,
 )
 
-st.set_page_config(page_title="Serenity-Killer", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Tollgate", page_icon="🎯", layout="wide")
 
 
 # ───────── cached loaders ─────────
@@ -143,7 +143,7 @@ def _run_cli(cmd: str) -> str:
 
 
 with st.sidebar:
-    st.markdown("### 🎯 Serenity-Killer")
+    st.markdown("### 🎯 Tollgate")
     st.caption(f"Loaded at: **{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**")
 
     if st.button("Refresh prices", width="stretch"):
@@ -189,7 +189,7 @@ with st.sidebar:
 
 
 # ───────── main ─────────
-st.title("🎯 Serenity-Killer Playbook — Live Dashboard")
+st.title("🎯 Tollgate — Supply-Chain Chokepoint Dashboard")
 
 cp = load_chokepoints()
 sc = load_latest_scores()
