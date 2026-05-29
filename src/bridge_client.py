@@ -2,11 +2,28 @@
 from __future__ import annotations
 import json
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 from .config import BRIDGE_API_KEY, BRIDGE_BASE_URL, BRIDGE_MODEL
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def _is_retryable(exc: BaseException) -> bool:
+    """Retry only transient failures: timeouts, connection drops, and 5xx.
+
+    A 4xx (bad request, auth, model-not-found) will never succeed on retry, so
+    we surface it immediately instead of burning the retry budget.
+    """
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        return exc.response.status_code >= 500
+    return False
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+)
 def chat(
     messages: list[dict],
     *,
