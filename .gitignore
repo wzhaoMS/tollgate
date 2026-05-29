@@ -1,8 +1,29 @@
-# personal local data / drafts
-notes.local.md
-*.local.*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local data + secrets (committed only via .env.example)
 .env
 .env.*
+!.env.example
+data/playbook.db
+data/playbook.db-journal
+data/playbook.db-wal
+data/playbook.db-shm
+
+# personal local notes
+notes.local.md
+*.local.*
+secrets/
+*.pem
+*.key
 
 # OS / editor
 .DS_Store
@@ -13,8 +34,3 @@ Thumbs.db
 # spreadsheets in progress
 ~$*.xlsx
 *.tmp.csv
-
-# secrets
-secrets/
-*.pem
-*.key

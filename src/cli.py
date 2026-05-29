@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 from . import db, seed, scoring, digest as digest_mod
 from .scrapers import edgar
+from .enrich import filing_text
 
 
 def cmd_init() -> int:
@@ -34,6 +35,10 @@ def cmd_score() -> int:
     scoring.main()
     return 0
 
+enrich() -> int:
+    filing_text.main()
+    return 0
+
 
 def cmd_digest() -> int:
     digest_mod.main()
@@ -43,6 +48,7 @@ def cmd_digest() -> int:
 def cmd_all() -> int:
     cmd_seed()
     cmd_harvest()
+    cmd_enrich()
     cmd_score()
     cmd_digest()
     return 0
@@ -51,6 +57,8 @@ def cmd_all() -> int:
 COMMANDS = {
     "init": cmd_init,
     "seed": cmd_seed,
+    "harvest": cmd_harvest,
+    "enrich": cmd_enrich
     "harvest": cmd_harvest,
     "score": cmd_score,
     "digest": cmd_digest,
