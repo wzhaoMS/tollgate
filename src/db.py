@@ -80,6 +80,73 @@ CREATE TABLE IF NOT EXISTS scores (
     FOREIGN KEY(ticker) REFERENCES chokepoints(ticker)
 );
 CREATE INDEX IF NOT EXISTS idx_scores_ticker_time ON scores(ticker, scored_at);
+
+CREATE TABLE IF NOT EXISTS prices (
+    ticker          TEXT,
+    date            TEXT,
+    close           REAL,
+    volume          REAL,
+    PRIMARY KEY (ticker, date)
+);
+
+CREATE TABLE IF NOT EXISTS contamination (
+    ticker                  TEXT PRIMARY KEY,
+    measured_at             TEXT DEFAULT (datetime('now')),
+    last_close              REAL,
+    pct_change_5d           REAL,
+    pct_change_20d          REAL,
+    volume_ratio_20d        REAL,
+    crowd_flag              TEXT CHECK(crowd_flag IN ('low','medium','high','unknown')) DEFAULT 'unknown'
+);
+
+CREATE TABLE IF NOT EXISTS insider_txns (
+    accession_no    TEXT,
+    ticker          TEXT,
+    filer_name      TEXT,
+    relation        TEXT,
+    txn_date        TEXT,
+    txn_code        TEXT,
+    shares          REAL,
+    price           REAL,
+    dollar_amount   REAL,
+    url             TEXT,
+    discovered_at   TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (accession_no, filer_name, txn_date, txn_code)
+);
+CREATE INDEX IF NOT EXISTS idx_insider_ticker ON insider_txns(ticker);
+
+CREATE TABLE IF NOT EXISTS tweets (
+    tweet_id        TEXT PRIMARY KEY,
+    handle          TEXT,
+    posted_at       TEXT,
+    text            TEXT,
+    tickers         TEXT,
+    url             TEXT,
+    discovered_at   TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tweets_handle_time ON tweets(handle, posted_at);
+
+CREATE TABLE IF NOT EXISTS page_snapshots (
+    url             TEXT,
+    snapshot_at     TEXT DEFAULT (datetime('now')),
+    content_sha256  TEXT,
+    char_len        INTEGER,
+    diff_lines      INTEGER,
+    PRIMARY KEY (url, snapshot_at)
+);
+CREATE INDEX IF NOT EXISTS idx_pages_url_time ON page_snapshots(url, snapshot_at);
+
+CREATE TABLE IF NOT EXISTS positions (
+    ticker          TEXT PRIMARY KEY,
+    opened_at       TEXT DEFAULT (datetime('now')),
+    cost_basis      REAL,
+    shares          REAL,
+    high_water      REAL,
+    last_price      REAL,
+    pnl_pct         REAL,
+    closed_at       TEXT,
+    notes           TEXT
+);
 """
 
 

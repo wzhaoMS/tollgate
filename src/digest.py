@@ -2,21 +2,23 @@
 
 Sections:
   1) New keyword-filtered filings (since yesterday)
-  2) Current scoring snapshot per ticker
+  2) Top movers (5d) from contamination table
+  3) Tweet cashtag spikes (most-mentioned tickers in last 24h)
+  4) Current scoring snapshot per ticker
+  5) Exit-trigger alerts (if any open positions)
 """
 from __future__ import annotations
 import datetime as dt
 import requests
 from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from . import db, scoring
+from . import db, scoring, drawdown
 
 
 def render_markdown() -> str:
     lines: list[str] = []
     today = dt.date.today().isoformat()
-    lines.append(f"# Serenity-Killer Daily Digest — {today}\n")
+    lines.append(f"# Serenity-Killer Daily Digest -- {today}\n")
 
-    # 1. Recent filings
     with db.connect() as cx:
         cutoff = (dt.datetime.utcnow() - dt.timedelta(hours=36)).isoformat()
         rows = cx.execute(
@@ -24,22 +26,65 @@ def render_markdown() -> str:
             "WHERE discovered_at >= ? ORDER BY filed_at DESC LIMIT 50",
             (cutoff,),
         ).fetchall()
-    lines.append(f"## New keyword-hit filings (last 36h): {len(rows)}\n")
-    for r in rows[:25]:
-        lines.append(f"- [{r['form']}] {r['title']}")
-        lines.append(f"  - {r['url']}")
-        lines.append(f"  - hits: {r['keyword_hits']}")
-    if not rows:
-        lines.append("- (none)\n")
+        lines.append(f"## 1) New keyword-hit filings (last 36h): {len(rows)}\n")
+        for r in rows[:15]:
+            lines.append(f"- [{r['form']}] {r['title']}")
+            lines.append(f"  - {r['url']}")
+            lines.append(f"  - hits: {r['keyword_hits']}")
+        if not rows:
+            lines.append("- (none)\n")
 
-    # 2. Scoring snapshot
-    lines.append("\n## Scoring snapshot\n")
-    lines.append("| Ticker | Overall | Step -1 | Step 1 | Step 8 | Step 9 |")
-    lines.append("|--------|---------|---------|--------|--------|--------|")
+        # 2. Top movers
+        movers = cx.execute(
+            "SELECT ticker, last_close, pct_change_5d, pct_change_20d, "
+            "       volume_ratio_20d, crowd_flag "
+            "FROM contamination WHERE pct_change_5d IS NOT NULL "
+            "ORDER BY ABS(pct_change_5d) DESC LIMIT 10"
+        ).fetchall()
+        lines.append("\n## 2) Top movers (|5d %| desc)\n")
+        if movers:
+            lines.append("| Ticker | Close | 5d % | 20d % | Vol ratio | Crowd |")
+            lines.append("|--------|-------|------|-------|-----------|-------|")
+            for m in movers:
+                lines.append(
+                    f"| {m['ticker']} | {m['last_close']:.2f} | "
+                    f"{m['pct_change_5d']:+.1f}% | {m['pct_change_20d']:+.1f}% | "
+                    f"{m['volume_ratio_20d']:.2f} | {m['crowd_flag']} |"
+                )
+        else:
+            lines.append("- (no price data yet — run `prices`)\n")
+
+        # 3. Tweet cashtag spikes
+        cutoff_24h = (dt.datetime.utcnow() - dt.timedelta(hours=36)).isoformat()
+        spikes = cx.execute(
+            "SELECT tickers, COUNT(*) as c FROM tweets "
+            "WHERE discovered_at >= ? AND tickers <> '' "
+            "GROUP BY tickers ORDER BY c DESC LIMIT 10",
+            (cutoff_24h,),
+        ).fetchall()
+        lines.append("\n## 3) Tweet cashtag spikes (last 36h)\n")
+        if spikes:
+            for s in spikes:
+                lines.append(f"- {s['tickers']}: {s['c']} mentions")
+        else:
+            lines.append("- (no tweets ingested yet — run `tweets`)\n")
+
+    # 4. Scoring snapshot
+    lines.append("\n## 4) Scoring snapshot\n")
+    lines.append("| Ticker | Overall | Step -1 | Step 1 | Step 2 | Step 8 | Step 9 |")
+    lines.append("|--------|---------|---------|--------|--------|--------|--------|")
     for r in scoring.score_all():
         lines.append(
-            f"| {r['ticker']} | {r['overall']} | {r['step_minus1']} | {r['step_1']} | {r['step_8']} | {r['step_9']} |"
+            f"| {r['ticker']} | **{r['overall']}** | {r['step_minus1']} | "
+            f"{r['step_1']} | {r['step_2']} | {r['step_8']} | {r['step_9']} |"
         )
+
+    # 5. Drawdown alerts (only if any)
+    alerts = drawdown.evaluate()
+    if alerts:
+        lines.append("\n## 5) Exit-trigger alerts\n")
+        for a in alerts:
+            lines.append(f"- {a}")
     return "\n".join(lines) + "\n"
 
 

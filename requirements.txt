@@ -3,3 +3,7 @@ feedparser>=6.0.11
 python-dotenv>=1.0
 rich>=13.7
 tenacity>=8.5
+yfinance>=0.2.50
+beautifulsoup4>=4.12
+streamlit>=1.40
+pandas>=2.2

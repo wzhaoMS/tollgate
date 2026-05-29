@@ -1,4 +1,4 @@
-# Run guide — Sprint 1 MVP
+# Run guide — Daily MVP (Sprints 1+2+3+4)
 
 ## One-time setup
 
@@ -18,30 +18,59 @@ py -m src.cli init
 # Load seed chokepoint rows + write keyword dictionary
 py -m src.cli seed
 
-# Pull recent EDGAR filings, keyword-filter, persist hits
+# Pull live prices via yfinance, compute crowd contamination (Step -1)
+py -m src.cli prices
+
+# Pull recent EDGAR filings, keyword-filter
 py -m src.cli harvest
 
-# Run the 11-step scoring engine over all chokepoints
+# Pull Form 4 insider transactions (Step 6)
+py -m src.cli insider
+
+# Pull tweets from smart-money X accounts via Nitter mirrors
+py -m src.cli tweets
+
+# Snapshot customer partner pages and flag diffs (Step 1 evidence)
+py -m src.cli diffwatch
+
+# LLM-extract structured evidence from filing text (Step 1 grade)
+py -m src.cli enrich
+
+# Run the 11-step scoring engine
 py -m src.cli score
 
-# Print the daily digest (also posts to Telegram if configured)
+# Pair-trade candidates from current prices (Sprint 3)
+py -m src.cli pairs
+
+# Exit-trigger / drawdown monitor (Sprint 4)
+py -m src.cli monitor
+
+# Daily markdown digest (+ optional Telegram)
 py -m src.cli digest
 
-# Or do everything in one go
+# Weekly LLM-written brief
+py -m src.cli brief
+
+# Do everything in order
 py -m src.cli all
+```
+
+## Streamlit dashboard
+
+```powershell
+streamlit run src/dashboard.py
 ```
 
 ## Run tests
 
 ```powershell
-py -m pip install pytest
 py -m pytest -q
 ```
 
 ## Telegram (optional)
 
 1. Talk to `@BotFather` on Telegram, create a bot, copy the token.
-2. Talk to your bot once (so it can DM you), then grab your chat id from `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+2. Message your bot once, then grab your chat id from `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 3. Put both in `.env`:
 
 ```
@@ -56,19 +85,27 @@ schtasks /Create /SC DAILY /TN "SerenityKillerDigest" /TR `
   "py -m src.cli all" /ST 08:00 /RU "$env:USERNAME" /F
 ```
 
-## What's in / out of scope this sprint
+## What's in the box now
 
-In:
-- SQLite schema (chokepoints / filings / evidence / scores)
-- SEC EDGAR keyword-filtered harvest (8-K / 10-Q / 10-K)
-- 11-step scoring v0 (rule-based; unknown values stay unknown)
-- Markdown daily digest, optional Telegram delivery
-- Local Copilot bridge client (used by next sprint's LLM enrichment)
+- 27 seed tickers across InP / SiC / CPO / SiPh / power / DC / nuclear themes.
+- Live yfinance prices (incl. foreign listings via TICKER_OVERRIDES).
+- Real-time SEC EDGAR keyword-hit filings + LLM extraction via local Claude bridge.
+- Form 4 insider tracking.
+- Nitter-based X scraping for 19+ smart-money accounts (Serenity, Leopold, Dylan Patel, AyarLabs, Lightmatter, etc.).
+- Customer partner-page diff with browser UA.
+- Auto crowd-contamination check (5d / 20d / volume ratio).
+- 11-step scoring engine with hard fail rules.
+- Pair-trade candidate generator by chokepoint theme.
+- Drawdown / exit-trigger monitor.
+- Daily markdown digest with top movers + cashtag spikes.
+- Weekly LLM brief written by Claude 4.7-xhigh via the local bridge.
+- Streamlit dashboard.
+- Pytest smoke covers schema, seed, scorer, paper, diff cleaner, pairs.
 
-Out (next sprints):
-- Twitter / X scrapers
-- Customer website diff (Visualping)
-- LLM-driven evidence grading on raw filing text
-- Polygon price/volume for crowd-contamination automation
-- Streamlit dashboard
-- Pair-trade candidate generator
+## What's NOT in the box (planned)
+
+- Real broker integration (Alpaca / IBKR)
+- Backtesting harness
+- Multi-user / scheduling beyond local Task Scheduler
+- Aggressive JS-rendered scraping (use Playwright if you need it)
+

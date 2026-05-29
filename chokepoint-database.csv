@@ -8,3 +8,21 @@ LITE,Optical transceivers + HCF,Google TPU / NVDA,A,TBD,unknown,unknown,unknown,
 COHR,Optical components + InP,NVDA / Hyperscalers,A,TBD,unknown,unknown,unknown,18,LITE / Innolight,unknown,unknown,unknown,Q2 2026 earnings,9,medium,clean,75,Watch,2026-05-28
 CIEN,Coherent DCI optical transport,Hyperscalers / Carriers,A,TBD,unknown,unknown,unknown,24,Nokia Infinera / Cisco,unknown,unknown,unknown,Q3 2026 earnings,9,low,clean,90,Watch,2026-05-28
 NOK,Coherent DCI optical (Infinera) + AI-RAN,Telcos / Hyperscalers,B,TBD,unknown,unknown,unknown,24,Ciena / Ericsson,35000000000,21000000000,1.7,Q2 2026 earnings,8,low,clean,75,Watch,2026-05-28
+ALAB,PCIe / connectivity ASIC for AI,Hyperscalers,A,TBD,unknown,unknown,unknown,18,Marvell / Broadcom,unknown,unknown,unknown,Q2 2026 earnings,9,medium,clean,90,Watch,2026-05-28
+CRDO,Active electrical cables for AI,AMZN/MSFT/GOOG,A,TBD,unknown,unknown,unknown,18,Macom / Semtech,unknown,unknown,unknown,Q2 2026 earnings,9,high,clean,75,Watch,2026-05-28
+MRVL,Custom silicon + DSP + optical,Hyperscalers,A,TBD,unknown,unknown,unknown,12,Broadcom,unknown,unknown,unknown,Q2 2026 earnings,9,low,clean,75,Watch,2026-05-28
+AVGO,Ethernet switches + custom ASIC,Hyperscalers,A,TBD,unknown,unknown,unknown,12,Marvell,unknown,unknown,unknown,Q2 2026 earnings,9,low,clean,75,Watch,2026-05-28
+MU,HBM3E / HBM4 memory,NVDA/AMD,A,TBD,unknown,unknown,unknown,18,Samsung / SK Hynix,unknown,unknown,unknown,Q4 2026 earnings,9,low,clean,90,Watch,2026-05-28
+WOLF,SiC wafers + devices,NVDA/auto/grid,B,TBD,unknown,unknown,unknown,18,XFAB / OnSemi,unknown,unknown,unknown,Q2 2026 earnings,7,low,redflag,90,Watch,2026-05-28
+NVTS,GaN power semis (800VDC),NVDA AI rack power,B,TBD,unknown,unknown,unknown,18,POWI / Power Integrations,unknown,unknown,unknown,Q2 2026 earnings,7,medium,clean,90,Watch,2026-05-28
+POWI,GaN / SiC power conversion,Data centers,B,TBD,unknown,unknown,unknown,18,NVTS,unknown,unknown,unknown,Q3 2026 earnings,7,low,clean,90,Watch,2026-05-28
+IQE,Epitaxy wafer (InP / GaAs),Lumentum / COHR / SIVE,B,TBD,unknown,unknown,unknown,18,IntelliEPI / Sumitomo,unknown,unknown,unknown,FY 2026 results,7,medium,atm,180,Watch,2026-05-28
+RPI,Compute modules / agentic AI HW,Edge OEMs,C,TBD,unknown,unknown,unknown,12,nVIDIA Jetson / Hailo,unknown,unknown,unknown,FY 2027 H1,5,high,clean,180,Watch,2026-05-28
+POET,Optical interposer / CPO,Lumentum / Foxconn,C,TBD,unknown,unknown,unknown,18,Lightmatter / Ayar (internal),unknown,unknown,unknown,Q2 2026 earnings,5,high,atm,180,Watch,2026-05-28
+HPS-A,Power transformers / switchgear,Hyperscaler DCs,B,TBD,unknown,unknown,unknown,30,Hammond competitors,1500000000,unknown,unknown,Q3 2026 earnings,7,high,clean,120,Watch,2026-05-28
+SMCI,AI server OEM,Hyperscalers / Sovereign AI,A,TBD,unknown,unknown,unknown,6,Dell / Lenovo / Wiwynn,unknown,unknown,unknown,Q4 2026 earnings,9,medium,redflag,75,Watch,2026-05-28
+DELL,AI server / storage,Hyperscalers,A,TBD,unknown,unknown,unknown,6,SMCI / Lenovo / HPE,unknown,unknown,unknown,Q2 2026 earnings,9,high,clean,75,Watch,2026-05-28
+CEG,Nuclear power for data centers,MSFT/AMZN,A,TBD,unknown,unknown,unknown,60,VST / Solar+battery,unknown,unknown,unknown,Q3 2026 earnings,7,medium,clean,180,Watch,2026-05-28
+VST,Nuclear + gas peakers for DCs,Hyperscalers,A,TBD,unknown,unknown,unknown,60,CEG / CCJ,unknown,unknown,unknown,Q3 2026 earnings,7,medium,clean,180,Watch,2026-05-28
+TSEM,Specialty foundry (RF / SiPh),Marvell / NVDA,B,TBD,unknown,unknown,unknown,18,GFS / XFAB,unknown,unknown,unknown,Q2 2026 earnings,7,medium,clean,180,Watch,2026-05-28
+GFS,Specialty foundry (SiPh / RF / power),Hyperscalers / auto,B,TBD,unknown,unknown,unknown,12,Intel Foundry / TSEM,unknown,unknown,unknown,Q2 2026 earnings,7,low,clean,90,Watch,2026-05-28

@@ -1,11 +1,10 @@
-"""Smoke tests: schema creation, seed load, keyword filter, scorer runs end-to-end."""
+"""Smoke tests: schema creation, seed load, keyword filter, scorer + pair gen."""
 from __future__ import annotations
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-# Ensure we can import the project even when pytest auto-discovers
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -13,24 +12,37 @@ sys.path.insert(0, str(ROOT))
 def test_end_to_end():
     tmp = Path(tempfile.mkdtemp()) / "test.db"
     os.environ["DB_PATH"] = str(tmp)
-    # Force re-import with new DB_PATH
     for mod in [m for m in list(sys.modules) if m.startswith("src.")]:
         del sys.modules[mod]
-    from src import db, seed, scoring
-    from src.scrapers import edgar
+    from src import db, seed, scoring, pair_trade, paper, drawdown
+    from src.scrapers import edgar, customer_diff
 
     db.init()
     n_seed = seed.load_seed_csv()
     seed.write_keyword_dict()
-    assert n_seed >= 9, f"expected at least 9 seeded rows, got {n_seed}"
+    assert n_seed >= 9
 
-    # Keyword scan on synthetic text
-    kw = {"supplier_lock": ["sole source"], "themes": ["indium phosphide"]}
-    hits = edgar._scan_keywords("We are the sole source of InP-related wafers.", kw)
+    # Keyword scan
+    hits = edgar._scan_keywords("We are the sole source of InP wafers.", {"a": ["sole source"]})
     assert any("sole source" in h for h in hits)
 
-    # Scorer runs and writes
+    # Scorer runs
     out = scoring.score_all()
     assert len(out) == n_seed
     for r in out:
         assert r["overall"] in {"Buy", "Watch", "Pass", "Skip"}
+
+    # Customer diff cleaner produces text
+    cleaned = customer_diff._clean("<html><script>x()</script>hello <b>world</b></html>")
+    assert "hello" in cleaned and "x()" not in cleaned
+
+    # Paper position round trip
+    paper.open_position("TEST", 100, 10.0, notes="unit")
+    assert any(p["ticker"] == "TEST" for p in paper.list_positions())
+    paper.close_position("TEST")
+
+    # Drawdown evaluator does not blow up on empty set
+    drawdown.evaluate()
+
+    # Pair candidates list is iterable (may be empty without prices)
+    list(pair_trade.candidates())
