@@ -8,6 +8,13 @@ from pathlib import Path
 
 from .config import DB_PATH
 
+# Ordered list of (version, sql) migrations applied after the base SCHEMA.
+# Each migration is wrapped in its own transaction and recorded in
+# ``schema_migrations``. Migrations must be idempotent-safe (use IF NOT EXISTS
+# / IF NOT EXISTS column probes) so re-running init() on a partially-migrated
+# DB is safe.
+MIGRATIONS: list[tuple[int, str]] = []
+
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS chokepoints (
     ticker                  TEXT PRIMARY KEY,
@@ -412,6 +419,20 @@ def init(db_path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as cx:
         cx.executescript(SCHEMA)
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+            "version INTEGER PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
+        )
+        try:
+            cx.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            pass  # WAL may be unavailable on some filesystems; not fatal
+        applied = {row[0] for row in cx.execute("SELECT version FROM schema_migrations")}
+        for version, sql in MIGRATIONS:
+            if version in applied:
+                continue
+            cx.executescript(sql)
+            cx.execute("INSERT INTO schema_migrations(version) VALUES (?)", (version,))
         cx.commit()
 
 

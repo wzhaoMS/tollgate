@@ -4,8 +4,9 @@ Reads ALPACA_KEY / ALPACA_SECRET from .env. Submits paper orders for tickers
 currently scored 'Buy' that we don't already hold, and closes positions whose
 score has dropped or whose drawdown trigger has fired.
 
-This is intentionally tiny: 1 ticker = 1 share. Position sizing per the
-playbook (Step 11) lives in src.risk_sizing once we wire it in.
+Position size comes from the latest row in ``position_sizing_decisions``
+(see ``src.risk_sizing``). If no sizing decision exists for a ticker we fall
+back to a single share so the existing local-paper behavior is preserved.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import os
 
 import requests
 
-from . import db, paper, scoring
+from . import db, paper, risk_sizing, scoring
 
 ALPACA_BASE = os.environ.get("ALPACA_BASE", "https://paper-api.alpaca.markets")
 KEY = os.environ.get("ALPACA_KEY", "").strip()
@@ -66,13 +67,21 @@ def sync(action_log: bool = True) -> dict:
         return _sync_internal()
     open_now = {p["symbol"]: p for p in list_positions()}
     scores = {r["ticker"]: r["overall"] for r in scoring.latest_scores()}
+    last_close = _last_close_map()
     for ticker, overall in scores.items():
         if overall == "Buy" and ticker not in open_now:
-            o = submit_market_order(ticker, 1, "buy")
+            sizing = risk_sizing.latest_sizing_for(ticker)
+            qty = risk_sizing.shares_from_sizing(sizing, last_close.get(ticker, 0.0))
+            if qty <= 0 and sizing is None:
+                qty = 1  # backward-compatible default
+            if qty <= 0:
+                results["skipped"].append(ticker)
+                continue
+            o = submit_market_order(ticker, qty, "buy")
             if o:
                 results["opened"].append(ticker)
                 # mirror locally
-                paper.open_position(ticker, 1, 0.0, notes="alpaca-paper")
+                paper.open_position(ticker, qty, last_close.get(ticker, 0.0), notes="alpaca-paper")
         elif overall != "Buy" and ticker in open_now:
             o = submit_market_order(ticker, open_now[ticker]["qty"], "sell")
             if o:
@@ -85,24 +94,36 @@ def sync(action_log: bool = True) -> dict:
     return results
 
 
-def _sync_internal() -> dict:
-    """No Alpaca creds — just maintain the local `positions` table.
-    Uses the most recent close (from contamination/prices) as cost basis.
-    """
-    results = {"opened": [], "closed": [], "skipped": []}
-    held = {p["ticker"] for p in paper.list_positions()}
-    scores = {r["ticker"]: r["overall"] for r in scoring.latest_scores()}
-    # Look up last close per ticker from the contamination table
-    last_close: dict[str, float] = {}
+def _last_close_map() -> dict[str, float]:
+    out: dict[str, float] = {}
     with db.connect() as cx:
         for r in cx.execute(
             "SELECT ticker, last_close FROM contamination WHERE last_close IS NOT NULL"
         ):
-            last_close[r["ticker"]] = float(r["last_close"])
+            out[r["ticker"]] = float(r["last_close"])
+    return out
+
+
+def _sync_internal() -> dict:
+    """No Alpaca creds — just maintain the local `positions` table.
+    Uses the most recent close (from contamination/prices) as cost basis,
+    and the latest Kelly-lite sizing decision for share count.
+    """
+    results = {"opened": [], "closed": [], "skipped": []}
+    held = {p["ticker"] for p in paper.list_positions()}
+    scores = {r["ticker"]: r["overall"] for r in scoring.latest_scores()}
+    last_close = _last_close_map()
     for ticker, overall in scores.items():
         if overall == "Buy" and ticker not in held:
             cost = last_close.get(ticker, 0.0)
-            paper.open_position(ticker, 1, cost, notes="local-paper")
+            sizing = risk_sizing.latest_sizing_for(ticker)
+            qty = risk_sizing.shares_from_sizing(sizing, cost)
+            if qty <= 0 and sizing is None:
+                qty = 1  # backward-compatible default
+            if qty <= 0:
+                results["skipped"].append(ticker)
+                continue
+            paper.open_position(ticker, qty, cost, notes="local-paper")
             results["opened"].append(ticker)
         elif overall != "Buy" and ticker in held:
             paper.close_position(ticker)

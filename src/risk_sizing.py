@@ -124,3 +124,45 @@ def record_decision(decision: dict[str, Any]) -> int:
             ),
         )
         return int(cur.lastrowid or 0)
+
+
+def latest_sizing_for(ticker: str) -> dict[str, Any] | None:
+    """Return the most recent sizing decision for ``ticker``, or ``None``.
+
+    Used by the paper-trading adapters so they place orders sized by the
+    Kelly-lite decision instead of a hardcoded 1 share.
+    """
+    db.init()
+    with db.connect() as cx:
+        row = cx.execute(
+            "SELECT ticker, decided_at, capped_position_pct, dollar_amount, decision "
+            "FROM position_sizing_decisions WHERE ticker = ? "
+            "ORDER BY decided_at DESC, id DESC LIMIT 1",
+            (ticker.upper(),),
+        ).fetchone()
+    if not row:
+        return None
+    return dict(row)
+
+
+def shares_from_sizing(
+    sizing: dict[str, Any] | None,
+    last_price: float,
+    *,
+    fallback_qty: int = 1,
+) -> int:
+    """Convert a sizing decision into an integer share count.
+
+    - ``None`` or ``decision != 'size'`` -> 0 (skip).
+    - Missing/zero price -> ``fallback_qty`` so we degrade gracefully when
+      we have a sizing intent but no fresh price.
+    """
+    if not sizing or sizing.get("decision") != "size":
+        return 0
+    dollars = float(sizing.get("dollar_amount") or 0.0)
+    if dollars <= 0:
+        return 0
+    if last_price <= 0:
+        return fallback_qty
+    qty = int(dollars // last_price)
+    return qty if qty > 0 else 0

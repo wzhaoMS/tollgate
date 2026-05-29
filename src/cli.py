@@ -47,8 +47,11 @@ from . import (
     source_health,
     strategy_signals,
 )
+from . import (
+    backup as backup_mod,
+)
 from . import digest as digest_mod
-from .enrich import filing_full, filing_text
+from .enrich import customer_relationships, filing_full, filing_text
 from .scrapers import customer_diff, edgar, insider_form4, nitter_x, yf_prices
 
 
@@ -192,6 +195,15 @@ def cmd_doctor(args: list[str]) -> int:
     return doctor.run()
 
 
+def cmd_backup(args: list[str]) -> int:
+    out = backup_mod.create_backup()
+    if out:
+        print(f"backup: wrote {out} ({out.stat().st_size} bytes)")
+    else:
+        print("backup: source DB missing; nothing to do")
+    return 0
+
+
 def cmd_fulltext(args: list[str]) -> int:
     p = argparse.ArgumentParser(prog="fulltext")
     p.add_argument("--limit", type=int, default=25, help="number of filings to fetch")
@@ -209,6 +221,19 @@ def cmd_fulltext(args: list[str]) -> int:
         f"filing-text fetch: +{res['fetched']} full docs, "
         f"skipped={res['skipped']}, errors={res['errors']}, "
         f"govt-flagged filings now={res['govt']}"
+    )
+    return 0
+
+
+def cmd_relationships(args: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="relationships")
+    p.add_argument("--limit", type=int, default=500, help="recent filings to scan")
+    ns = p.parse_args(args)
+    res = customer_relationships.extract_from_filings(limit=ns.limit)
+    print(
+        f"customer-filing extraction: scanned={res['scanned']}, "
+        f"matched={res['matched']}, inserted={res['inserted']}, "
+        f"skipped_existing={res['skipped_existing']}"
     )
     return 0
 
@@ -258,11 +283,36 @@ def cmd_size(args: list[str]) -> int:
     return 0
 
 
+def _run_step(name: str, fn, args: list[str], *, critical: bool = False) -> tuple[bool, str | None]:
+    """Run a pipeline step, catching exceptions.
+
+    Returns ``(ok, error_message)``. If ``critical=True`` and the step raises,
+    the exception is re-raised so the caller aborts the pipeline.
+    """
+    print(f"[STEP {name}]")
+    try:
+        code = int(fn(args) or 0)
+    except Exception as e:  # noqa: BLE001
+        msg = f"{name}: {type(e).__name__}: {e}"
+        print(f"  [FAIL] {msg}")
+        if critical:
+            raise
+        return False, msg
+    if code != 0:
+        msg = f"{name}: exit code {code}"
+        print(f"  [FAIL] {msg}")
+        if critical:
+            raise RuntimeError(msg)
+        return False, msg
+    return True, None
+
+
 def cmd_all(args: list[str]) -> int:
     p = argparse.ArgumentParser(prog="all")
     p.add_argument("--skip-doctor", action="store_true", help="skip pre-flight health checks")
     ns = p.parse_args(args)
     run_id = runlog.start("all")
+    errors: list[str] = []
     try:
         if not ns.skip_doctor:
             doctor_code = doctor.run()
@@ -274,26 +324,51 @@ def cmd_all(args: list[str]) -> int:
                     warnings="doctor failed; pipeline aborted before network work",
                 )
                 return doctor_code
-        cmd_seed([])
-        cmd_prices([])
-        cmd_harvest([])
-        # 8-K bodies carry catalysts; 10-K risk factors carry CHIPS/DoE govt
-        # language that step_4 (govt backstop) keys off of.
-        cmd_fulltext(["--form", "8-K", "--limit", "60"])
-        cmd_fulltext(["--form", "10-K", "--limit", "40"])
-        cmd_insider([])
-        cmd_tweets([])
-        cmd_diffwatch([])
-        cmd_enrich([])
-        cmd_score([])
-        cmd_paper([])
-        cmd_monitor([])
-        cmd_digest([])
+
+        # (name, fn, args, critical)
+        steps: list[tuple[str, object, list[str], bool]] = [
+            ("backup",        cmd_backup,        [],                                False),
+            ("seed",          cmd_seed,          [],                                True),
+            ("prices",        cmd_prices,        [],                                False),
+            ("harvest",       cmd_harvest,       [],                                False),
+            ("fulltext-8K",   cmd_fulltext,      ["--form", "8-K", "--limit", "60"], False),
+            ("fulltext-10K",  cmd_fulltext,      ["--form", "10-K", "--limit", "40"], False),
+            ("relationships", cmd_relationships, ["--limit", "500"],                False),
+            ("insider",       cmd_insider,       [],                                False),
+            ("tweets",        cmd_tweets,        [],                                False),
+            ("diffwatch",     cmd_diffwatch,     [],                                False),
+            ("enrich",        cmd_enrich,        [],                                False),
+            ("score",         cmd_score,         [],                                True),
+            ("paper",         cmd_paper,         [],                                False),
+            ("monitor",       cmd_monitor,       [],                                False),
+            ("digest",        cmd_digest,        [],                                False),
+        ]
+        for name, fn, step_args, critical in steps:
+            ok, msg = _run_step(name, fn, step_args, critical=critical)
+            if not ok and msg:
+                errors.append(msg)
+
+        if errors:
+            runlog.finish(
+                run_id,
+                status="warn",
+                error_count=len(errors),
+                warnings="; ".join(errors)[:2000],
+            )
+            print(f"\n[ALL] completed with {len(errors)} step failure(s).")
+            return 1
         runlog.finish(run_id, status="ok")
         return 0
     except Exception as e:  # noqa: BLE001
-        runlog.finish(run_id, status="error", error_count=1, warnings=str(e))
-        raise
+        errors.append(str(e))
+        runlog.finish(
+            run_id,
+            status="error",
+            error_count=len(errors),
+            warnings="; ".join(errors)[:2000],
+        )
+        print(f"\n[ALL] aborted on critical failure: {e}")
+        return 2
 
 
 COMMANDS = {
@@ -301,6 +376,7 @@ COMMANDS = {
     "seed": cmd_seed,
     "harvest": cmd_harvest,
     "fulltext": cmd_fulltext,
+    "relationships": cmd_relationships,
     "enrich": cmd_enrich,
     "prices": cmd_prices,
     "insider": cmd_insider,
@@ -320,6 +396,7 @@ COMMANDS = {
     "digest": cmd_digest,
     "brief": cmd_brief,
     "doctor": cmd_doctor,
+    "backup": cmd_backup,
     "all": cmd_all,
 }
 

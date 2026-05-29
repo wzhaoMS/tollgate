@@ -83,3 +83,22 @@ def test_size_cli_calculates_without_recording(tmpdb, capsys):
     assert code == 0
     assert "TST: size 5.00%" in capsys.readouterr().out
     assert tmpdb.execute("SELECT COUNT(*) FROM position_sizing_decisions").fetchone()[0] == 0
+
+def test_latest_sizing_for_returns_most_recent(tmpdb):
+    d = risk_sizing.calculate_position_size(
+        ticker='TST', account_value_usd=100_000, p_win=0.5, avg_gain_pct=100, avg_loss_pct=40,
+    )
+    risk_sizing.record_decision(d)
+    out = risk_sizing.latest_sizing_for('tst')
+    assert out is not None
+    assert out['ticker'] == 'TST'
+    assert out['decision'] == 'size'
+    assert out['dollar_amount'] > 0
+
+
+def test_shares_from_sizing_floors_to_int():
+    sizing = {'decision': 'size', 'dollar_amount': 5_000.0}
+    assert risk_sizing.shares_from_sizing(sizing, 123.0) == 40
+    assert risk_sizing.shares_from_sizing(sizing, 0.0, fallback_qty=2) == 2
+    assert risk_sizing.shares_from_sizing(None, 100.0) == 0
+    assert risk_sizing.shares_from_sizing({'decision': 'skip', 'dollar_amount': 0}, 100.0) == 0
