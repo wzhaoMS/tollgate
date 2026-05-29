@@ -40,7 +40,7 @@ def test_downstream_for_reverses_lookup(tmpdb):
 def test_upstream_includes_score_when_available(tmpdb):
     supply_chain.import_builtin()
     tmpdb.execute(
-        "INSERT INTO chokepoints (ticker, market_cap_usd) VALUES ('XFAB', 1_200_000_000)"
+        "INSERT INTO chokepoints (ticker, market_cap_usd) VALUES ('XFAB', 1200000000)"
     )
     tmpdb.execute(
         "INSERT INTO scores (ticker, overall) VALUES ('XFAB', 'Watch')"

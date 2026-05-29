@@ -37,6 +37,31 @@ from src import (  # noqa: E402  # noqa: E402
 st.set_page_config(page_title="Tollgate", page_icon="🎯", layout="wide")
 
 
+@st.cache_resource
+def _bootstrap() -> str:
+    """Ensure the schema exists and, on a fresh deploy (e.g. Streamlit Cloud
+    where the gitignored DB is absent), load the built-in demo data once."""
+    db.init()
+    with db.connect() as cx:
+        has_rows = cx.execute("SELECT COUNT(*) FROM chokepoints").fetchone()[0]
+    if has_rows:
+        return "existing"
+    try:
+        from src import seed, seed_builtin
+        seed.load_seed_csv()
+        seed.write_keyword_dict()
+        seed_builtin.seed_all()
+        capacity_tracker.import_builtin_capacity()
+        governance.import_builtin_events()
+        signal_feeds.import_builtin_pages()
+        return "seeded"
+    except Exception as e:  # best-effort; dashboard still renders if seeding fails
+        return f"seed-error: {e}"
+
+
+_bootstrap()
+
+
 # ───────── cached loaders ─────────
 @st.cache_data(ttl=60)
 def load_chokepoints() -> pd.DataFrame:
