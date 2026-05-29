@@ -277,10 +277,12 @@ else:
         "crowd_flag", "last_close", "pct_change_5d", "pct_change_20d",
         "volume_ratio_20d", "decision",
     ] if c in merged.columns]
+    if "market_cap_usd" in merged.columns:
+        merged["market_cap_usd"] = (merged["market_cap_usd"] / 1e9).round(2)
     st.dataframe(
         merged[display_cols], width="stretch", height=420,
         column_config={
-            "market_cap_usd": st.column_config.NumberColumn(format="$%.0f"),
+            "market_cap_usd": st.column_config.NumberColumn("Mkt Cap ($B)", format="$%.2fB"),
             "ev_sales": st.column_config.NumberColumn(format="%.1fx"),
             "catalyst_score": st.column_config.ProgressColumn(min_value=0, max_value=10, format="%d"),
             "pct_change_5d": st.column_config.NumberColumn(format="%+.1f%%"),
@@ -570,11 +572,13 @@ try:
         if suppliers:
             sup_df = pd.DataFrame(suppliers)
             display_sup = [c for c in ["supplier_ticker", "link_strength", "market_cap_usd", "overall", "rationale"] if c in sup_df.columns]
+            if "market_cap_usd" in sup_df.columns:
+                sup_df["market_cap_usd"] = (sup_df["market_cap_usd"] / 1e9).round(2)
             st.dataframe(
                 sup_df[display_sup], width="stretch",
                 column_config={
                     "link_strength": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
-                    "market_cap_usd": st.column_config.NumberColumn(format="$%.0f"),
+                    "market_cap_usd": st.column_config.NumberColumn("Mkt Cap ($B)", format="$%.2fB"),
                 },
             )
         else:
