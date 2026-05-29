@@ -3,16 +3,21 @@
 Nitter instances rotate availability. We try a list of mirrors, parse the user
 timeline RSS, persist new tweets, and extract `$TICKER` cashtags via a regex
 intersected with our chokepoints universe.
+
+The list of handles is loaded from `data/handles.json` so it can grow without
+editing this file. Falls back to DEFAULT_HANDLES if the file is missing.
 """
 from __future__ import annotations
+import json
 import re
 import time
+from pathlib import Path
 from typing import Iterable
 
 import feedparser
 import requests
 
-from ..config import EDGAR_USER_AGENT  # reuse the polite UA
+from ..config import DATA_DIR, EDGAR_USER_AGENT  # reuse polite UA
 from .. import db
 
 NITTER_INSTANCES = [
@@ -23,28 +28,23 @@ NITTER_INSTANCES = [
     "https://nitter.tiekoetter.com",
 ]
 
-# Seed handle list (subset; the full curated list lives in data/handles.json once written)
+# Used only when handles.json is missing.
 DEFAULT_HANDLES = [
-    "aleabitoreddit",  # Serenity
-    "leopoldasch",
-    "dylan522p",
-    "Jukanlosreve",
-    "SKundojjala",
-    "doug_oloughlin",
-    "mule_capital",
-    "AyarLabs",
-    "lightmatterco",
-    "AsteraLabs",
-    "MarvellTech",
-    "Broadcom",
-    "nvidia",
-    "TrendForce_",
-    "semiengineering",
-    "TheValueist",
-    "0xKevin00",
-    "ai_9684xtpa",
-    "schwerelos",
+    "aleabitoreddit", "leopoldasch", "dylan522p",
+    "AyarLabs", "lightmatterco", "AsteraLabs",
+    "MarvellTech", "Broadcom", "nvidia",
 ]
+
+
+def _load_handles() -> list[str]:
+    p = Path(DATA_DIR) / "handles.json"
+    if not p.exists():
+        return DEFAULT_HANDLES
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return [h["handle"] for h in data.get("handles", []) if h.get("handle")]
+    except Exception:
+        return DEFAULT_HANDLES
 
 
 _CASHTAG = re.compile(r"\$([A-Z][A-Z0-9.\-]{0,5})\b")
@@ -95,8 +95,10 @@ def fetch_handle(handle: str, universe: set[str] | None = None) -> int:
     return inserted
 
 
-def harvest_handles(handles: Iterable[str] = DEFAULT_HANDLES) -> int:
+def harvest_handles(handles: Iterable[str] | None = None) -> int:
     db.init()
+    if handles is None:
+        handles = _load_handles()
     with db.connect() as cx:
         universe = {r[0] for r in cx.execute("SELECT ticker FROM chokepoints")}
     total = 0
