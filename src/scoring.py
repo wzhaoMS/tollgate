@@ -69,6 +69,40 @@ def _insider_signal(cx, ticker: str, lookback_days: int = 180) -> str:
     return "watch"
 
 
+# Government-backstop keywords (CHIPS Act, DoE, DPA Title III, ITC, etc.).
+_GOVT_KEYWORDS = (
+    "chips act", "chips and science", "department of energy", "doe grant",
+    "federal grant", "federal funding", "loan guarantee", "defense production act",
+    "dpa title iii", "title iii", "government award", "government grant",
+    "preliminary memorandum of terms", "inflation reduction act",
+    "investment tax credit", "section 48d", "subsidy", "matching funds",
+    "appropriation", "cofund", "co-fund",
+)
+
+
+def _govt_backstop(cx, ticker: str, row: dict[str, Any]) -> str:
+    """Detect a government backstop (downside floor) for a ticker.
+
+    Scans the curated row's free-text fields plus any harvested evidence
+    excerpts for CHIPS/DoE/DPA-style funding language.
+    pass    => backstop language found
+    unknown => nothing found (absence of evidence, not evidence of absence)
+    """
+    haystacks = [
+        (row.get("next_catalyst") or ""),
+        (row.get("notes") or ""),
+        (row.get("demand_proxy") or ""),
+        (row.get("capacity") or ""),
+    ]
+    ev = cx.execute(
+        "SELECT excerpt FROM evidence_log WHERE ticker = ? AND excerpt IS NOT NULL",
+        (ticker,),
+    ).fetchall()
+    haystacks.extend(r["excerpt"] or "" for r in ev)
+    blob = " ".join(haystacks).lower()
+    return "pass" if any(kw in blob for kw in _GOVT_KEYWORDS) else "unknown"
+
+
 def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"ticker": row["ticker"]}
 
@@ -106,8 +140,8 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     # Step 3: Substitution risk — needs human review; default unknown
     out["step_3"] = "unknown"
 
-    # Step 4: Government backstop — needs filing scan; default unknown
-    out["step_4"] = "unknown"
+    # Step 4: Government backstop — scan curated text + harvested evidence.
+    out["step_4"] = _govt_backstop(cx, row["ticker"], row)
 
     # Step 5: M&A floor (very coarse: mcap < 5x revenue suggests upside if revenue real)
     mcap = row.get("market_cap_usd")
@@ -144,6 +178,10 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     elif out["step_6"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
         # Not A-grade evidence yet, but insiders are buying alongside a live
         # catalyst on a near-term clock — worth a Watch upgrade from Skip.
+        overall = "Watch"
+    elif out["step_4"] == "pass" and out["step_8"] == "pass":
+        # A government backstop (CHIPS/DoE/DPA) caps the downside; with a live
+        # catalyst that's worth keeping on the Watch list rather than Skip.
         overall = "Watch"
     elif out["step_1"] in {"small", "watch"} or any(out[k] == "unknown" for k in out if k.startswith("step_")):
         overall = "Watch"

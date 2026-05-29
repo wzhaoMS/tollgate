@@ -37,6 +37,14 @@ KEYWORD_DICT = {
         "die-to-die interconnect", "3D packaging", "optical I/O",
         "integrated photonics", "high-bandwidth memory",
     ],
+    "govt_backstop": [
+        "CHIPS Act", "CHIPS and Science", "Department of Energy", "DoE grant",
+        "federal grant", "federal funding", "loan guarantee", "Defense Production Act",
+        "DPA Title III", "Title III", "government award", "government grant",
+        "direct funding", "preliminary memorandum of terms", "PMT",
+        "Inflation Reduction Act", "investment tax credit", "Section 48D",
+        "subsidy", "state incentive", "matching funds", "appropriation",
+    ],
 }
 
 
