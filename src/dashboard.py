@@ -347,162 +347,8 @@ else:
         with a:
             st.info("Pick at least one ticker.")
 
-# Section 3 — color-coded scoring
-st.header("3) Latest scoring snapshot")
-if sc.empty:
-    st.info("Run `py -m src.cli score`.")
-else:
-    score_cols = [c for c in sc.columns if c not in ("id", "scored_at", "notes")]
-    ordered = sc[score_cols].sort_values(
-        "overall", key=lambda s: s.map({"Buy": 0, "Watch": 1, "Pass": 2, "Skip": 3}),
-    )
-
-    def _color(val):
-        return {
-            "Buy": "background-color: #d1fae5",
-            "Watch": "background-color: #fef3c7",
-            "Pass": "background-color: #fee2e2",
-            "Skip": "background-color: #e5e7eb",
-        }.get(val, "")
-
-    styled = ordered.style.map(_color, subset=["overall"])
-    st.dataframe(styled, width="stretch", height=360)
-
-# Section 4 — pair trades
-st.header("4) Pair-trade candidates")
-pairs = pd.DataFrame(pair_trade.candidates())
-if pairs.empty:
-    st.info("No pair candidates yet — needs 20-day price data.")
-else:
-    st.dataframe(
-        pairs, width="stretch",
-        column_config={
-            "long_20d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "short_20d": st.column_config.NumberColumn(format="%+.1f%%"),
-            "spread_pct": st.column_config.NumberColumn(format="%+.1f%%"),
-        },
-    )
-
-# Section 5 — open positions
-st.header("5) Open paper positions")
-if positions.empty:
-    st.info("Run `py -m src.cli paper`.")
-else:
-    st.dataframe(
-        positions, width="stretch",
-        column_config={
-            "cost_basis": st.column_config.NumberColumn(format="$%.2f"),
-            "last_price": st.column_config.NumberColumn(format="$%.2f"),
-            "pnl_pct": st.column_config.NumberColumn(format="%+.1f%%"),
-        },
-    )
-
-# Section 6 — ticker drill-down
-st.header("6) Ticker drill-down")
-if not cp.empty:
-    pick = st.selectbox("Pick a ticker", cp["ticker"].tolist())
-    a, b, c = st.columns(3)
-    with a:
-        st.markdown("**Filings**")
-        sub = load_filings_for_ticker(pick)
-        if sub.empty:
-            st.caption(f"No filings hit for {pick}")
-        else:
-            st.dataframe(
-                sub,
-                width="stretch",
-                height=240,
-                column_config={"url": st.column_config.LinkColumn("link")},
-            )
-    with b:
-        st.markdown("**Tweet mentions**")
-        sub = tw[tw["tickers"].str.contains(pick, na=False)] if not tw.empty else pd.DataFrame()
-        if sub.empty:
-            st.caption(f"No tweets cashtagged {pick}")
-        else:
-            st.dataframe(sub, width="stretch", height=240)
-    with c:
-        st.markdown("**Insider Form 4**")
-        sub = insider[insider["ticker"] == pick] if not insider.empty else pd.DataFrame()
-        if sub.empty:
-            st.caption(f"No insider txns for {pick}")
-        else:
-            st.dataframe(sub, width="stretch", height=240)
-
-# Section 7 — full lists in expanders
-with st.expander("📰 Recent keyword-hit filings (full)"):
-    if fl.empty:
-        st.info("Run `py -m src.cli harvest`.")
-    else:
-        st.dataframe(
-            fl, width="stretch", height=400,
-            column_config={"url": st.column_config.LinkColumn("link")},
-        )
-
-with st.expander("🐦 Smart-money tweets (full)"):
-    if tw.empty:
-        st.info("Run `py -m src.cli tweets`.")
-    else:
-        st.dataframe(
-            tw, width="stretch", height=400,
-            column_config={"url": st.column_config.LinkColumn("link")},
-        )
-
-# ─── Section 8: Rotation signal ─────────────────────────────────────────────
-st.header("8) Sector rotation signal")
-try:
-    rotation_data = rotation.compute_rotation_signal()
-    if rotation_data:
-        rot_df = pd.DataFrame(rotation_data)
-        display_cols = [c for c in ["stage_idx", "theme", "avg_return_20d_pct", "signal", "rotation_to_next"] if c in rot_df.columns]
-        rot_styled = rot_df[display_cols].copy()
-        if "rotation_to_next" in rot_styled.columns:
-            rot_styled["rotation_to_next"] = rot_styled["rotation_to_next"].map({True: "🔄 ROTATE", False: ""})
-
-        def _rot_color(val):
-            colors = {"hot": "background-color: #d1fae5", "rolling": "background-color: #fef3c7",
-                       "cold": "background-color: #fee2e2", "unwinding": "background-color: #fecaca"}
-            return colors.get(val, "")
-
-        styled_rot = rot_styled.style.map(_rot_color, subset=["signal"]) if "signal" in rot_styled.columns else rot_styled
-        st.dataframe(styled_rot, width="stretch", height=240)
-    else:
-        st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
-except Exception:
-    st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
-
-# ─── Section 9: Supply chain graph ──────────────────────────────────────────
-st.header("9) Obvious-trade → supplier chain")
-try:
-    with db.connect() as cx:
-        obvious_tickers = [
-            r["obvious_ticker"]
-            for r in cx.execute(
-                "SELECT DISTINCT obvious_ticker FROM obvious_trade_supply_chain ORDER BY obvious_ticker"
-            ).fetchall()
-        ]
-    if obvious_tickers:
-        pick_obvious = st.selectbox("Pick an obvious-trade ticker", obvious_tickers, key="sc_pick")
-        suppliers = supply_chain.upstream_for(pick_obvious)
-        if suppliers:
-            sup_df = pd.DataFrame(suppliers)
-            display_sup = [c for c in ["supplier_ticker", "link_strength", "market_cap_usd", "overall", "rationale"] if c in sup_df.columns]
-            st.dataframe(
-                sup_df[display_sup], width="stretch",
-                column_config={
-                    "link_strength": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
-                    "market_cap_usd": st.column_config.NumberColumn(format="$%.0f"),
-                },
-            )
-        else:
-            st.caption(f"No upstream suppliers recorded for {pick_obvious}")
-    else:
-        st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
-except Exception:
-    st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
-
-# ─── Section 10: Capacity lifecycle ─────────────────────────────────────────
-st.header("10) Chokepoint capacity lifecycle")
+# ─── Section 3: Capacity lifecycle (moved up for price→fundamentals flow) ──
+st.header("3) Chokepoint capacity lifecycle")
 try:
     lifecycles = capacity_tracker.all_lifecycles()
     if lifecycles:
@@ -558,6 +404,161 @@ try:
         st.info("Run `py -m src.cli capacity --builtin` to seed capacity data.")
 except Exception:
     st.info("Run `py -m src.cli capacity --builtin` to seed capacity data.")
+
+# Section 4 — color-coded scoring
+st.header("4) Latest scoring snapshot")
+if sc.empty:
+    st.info("Run `py -m src.cli score`.")
+else:
+    score_cols = [c for c in sc.columns if c not in ("id", "scored_at", "notes")]
+    ordered = sc[score_cols].sort_values(
+        "overall", key=lambda s: s.map({"Buy": 0, "Watch": 1, "Pass": 2, "Skip": 3}),
+    )
+
+    def _color(val):
+        return {
+            "Buy": "background-color: #d1fae5",
+            "Watch": "background-color: #fef3c7",
+            "Pass": "background-color: #fee2e2",
+            "Skip": "background-color: #e5e7eb",
+        }.get(val, "")
+
+    styled = ordered.style.map(_color, subset=["overall"])
+    st.dataframe(styled, width="stretch", height=360)
+
+# Section 5 — pair trades
+st.header("5) Pair-trade candidates")
+pairs = pd.DataFrame(pair_trade.candidates())
+if pairs.empty:
+    st.info("No pair candidates yet — needs 20-day price data.")
+else:
+    st.dataframe(
+        pairs, width="stretch",
+        column_config={
+            "long_20d": st.column_config.NumberColumn(format="%+.1f%%"),
+            "short_20d": st.column_config.NumberColumn(format="%+.1f%%"),
+            "spread_pct": st.column_config.NumberColumn(format="%+.1f%%"),
+        },
+    )
+
+# Section 6 — open positions
+st.header("6) Open paper positions")
+if positions.empty:
+    st.info("Run `py -m src.cli paper`.")
+else:
+    st.dataframe(
+        positions, width="stretch",
+        column_config={
+            "cost_basis": st.column_config.NumberColumn(format="$%.2f"),
+            "last_price": st.column_config.NumberColumn(format="$%.2f"),
+            "pnl_pct": st.column_config.NumberColumn(format="%+.1f%%"),
+        },
+    )
+
+# Section 7 — ticker drill-down
+st.header("7) Ticker drill-down")
+if not cp.empty:
+    pick = st.selectbox("Pick a ticker", cp["ticker"].tolist())
+    a, b, c = st.columns(3)
+    with a:
+        st.markdown("**Filings**")
+        sub = load_filings_for_ticker(pick)
+        if sub.empty:
+            st.caption(f"No filings hit for {pick}")
+        else:
+            st.dataframe(
+                sub,
+                width="stretch",
+                height=240,
+                column_config={"url": st.column_config.LinkColumn("link")},
+            )
+    with b:
+        st.markdown("**Tweet mentions**")
+        sub = tw[tw["tickers"].str.contains(pick, na=False)] if not tw.empty else pd.DataFrame()
+        if sub.empty:
+            st.caption(f"No tweets cashtagged {pick}")
+        else:
+            st.dataframe(sub, width="stretch", height=240)
+    with c:
+        st.markdown("**Insider Form 4**")
+        sub = insider[insider["ticker"] == pick] if not insider.empty else pd.DataFrame()
+        if sub.empty:
+            st.caption(f"No insider txns for {pick}")
+        else:
+            st.dataframe(sub, width="stretch", height=240)
+
+# Section 8 — full lists in expanders
+st.header("8) Filing & tweet feeds")
+with st.expander("📰 Recent keyword-hit filings (full)"):
+    if fl.empty:
+        st.info("Run `py -m src.cli harvest`.")
+    else:
+        st.dataframe(
+            fl, width="stretch", height=400,
+            column_config={"url": st.column_config.LinkColumn("link")},
+        )
+
+with st.expander("🐦 Smart-money tweets (full)"):
+    if tw.empty:
+        st.info("Run `py -m src.cli tweets`.")
+    else:
+        st.dataframe(
+            tw, width="stretch", height=400,
+            column_config={"url": st.column_config.LinkColumn("link")},
+        )
+
+# ─── Section 9: Rotation signal ─────────────────────────────────────────────
+st.header("9) Sector rotation signal")
+try:
+    rotation_data = rotation.compute_rotation_signal()
+    if rotation_data:
+        rot_df = pd.DataFrame(rotation_data)
+        display_cols = [c for c in ["stage_idx", "theme", "avg_return_20d_pct", "signal", "rotation_to_next"] if c in rot_df.columns]
+        rot_styled = rot_df[display_cols].copy()
+        if "rotation_to_next" in rot_styled.columns:
+            rot_styled["rotation_to_next"] = rot_styled["rotation_to_next"].map({True: "🔄 ROTATE", False: ""})
+
+        def _rot_color(val):
+            colors = {"hot": "background-color: #d1fae5", "rolling": "background-color: #fef3c7",
+                       "cold": "background-color: #fee2e2", "unwinding": "background-color: #fecaca"}
+            return colors.get(val, "")
+
+        styled_rot = rot_styled.style.map(_rot_color, subset=["signal"]) if "signal" in rot_styled.columns else rot_styled
+        st.dataframe(styled_rot, width="stretch", height=240)
+    else:
+        st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
+except Exception:
+    st.info("Run `py -m src.cli rotation --builtin` to seed rotation stages.")
+
+# ─── Section 10: Supply chain graph ──────────────────────────────────────────
+st.header("10) Obvious-trade → supplier chain")
+try:
+    with db.connect() as cx:
+        obvious_tickers = [
+            r["obvious_ticker"]
+            for r in cx.execute(
+                "SELECT DISTINCT obvious_ticker FROM obvious_trade_supply_chain ORDER BY obvious_ticker"
+            ).fetchall()
+        ]
+    if obvious_tickers:
+        pick_obvious = st.selectbox("Pick an obvious-trade ticker", obvious_tickers, key="sc_pick")
+        suppliers = supply_chain.upstream_for(pick_obvious)
+        if suppliers:
+            sup_df = pd.DataFrame(suppliers)
+            display_sup = [c for c in ["supplier_ticker", "link_strength", "market_cap_usd", "overall", "rationale"] if c in sup_df.columns]
+            st.dataframe(
+                sup_df[display_sup], width="stretch",
+                column_config={
+                    "link_strength": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
+                    "market_cap_usd": st.column_config.NumberColumn(format="$%.0f"),
+                },
+            )
+        else:
+            st.caption(f"No upstream suppliers recorded for {pick_obvious}")
+    else:
+        st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
+except Exception:
+    st.info("Run `py -m src.cli supplychain --builtin` to seed supply chain links.")
 
 # ─── Section 11: Signal feed alerts ─────────────────────────────────────────
 st.header("11) Signal feed alerts")
