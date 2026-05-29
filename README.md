@@ -16,6 +16,9 @@ This project is *inspired by* the public OSINT methodology of Serenity
 close the structural gaps in that style and to avoid becoming late-cycle exit liquidity.
 It is not affiliated with, endorsed by, or representative of any individual.
 
+> ⚠️ **Not investment advice.** This is a personal, educational research project provided
+> "as is" with no warranty. See [`DISCLAIMER.md`](DISCLAIMER.md) before using anything here.
+
 ---
 
 ## Why it exists
@@ -145,3 +148,5 @@ This is a **personal research framework, not investment advice.** Everything her
 education and decision hygiene. The author holds no fiduciary duty to the reader and makes
 no representation about any third party. Small-cap chokepoint stocks routinely fall 25%+ in
 a single session. Do your own research; trade your own risk.
+
+**Full terms, no-warranty, and limitation of liability: see [`DISCLAIMER.md`](DISCLAIMER.md).**
