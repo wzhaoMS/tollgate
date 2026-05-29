@@ -61,22 +61,23 @@ def compute_contamination(ticker: str) -> dict | None:
             "SELECT date, close, volume FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 30",
             (ticker.upper(),),
         ).fetchall()
-    if len(rows) < 5:
+    # Keep close+volume aligned per trading day; only drop rows with no close.
+    series = [(r["close"], r["volume"]) for r in rows if r["close"] is not None]
+    if len(series) < 5:
         return None
 
-    closes = [r["close"] for r in rows if r["close"] is not None]
-    volumes = [r["volume"] for r in rows if r["volume"] is not None]
-    if not closes:
-        return None
-
+    closes = [c for c, _ in series]
     last_close = closes[0]
     close_5d_ago = closes[min(5, len(closes) - 1)]
     close_20d_ago = closes[min(20, len(closes) - 1)]
     pct_5d = (last_close - close_5d_ago) / close_5d_ago * 100 if close_5d_ago else None
     pct_20d = (last_close - close_20d_ago) / close_20d_ago * 100 if close_20d_ago else None
 
-    vol_20d_avg = sum(volumes[1:21]) / max(1, len(volumes[1:21])) if len(volumes) > 1 else None
-    last_volume = volumes[0] if volumes else None
+    # Volume ratio: latest day's volume vs the trailing 20-day average, using the
+    # SAME aligned rows (skip the latest day, then average up to 20 prior days).
+    prior_vols = [v for _, v in series[1:21] if v is not None]
+    vol_20d_avg = (sum(prior_vols) / len(prior_vols)) if prior_vols else None
+    last_volume = series[0][1]
     vol_ratio = (last_volume / vol_20d_avg) if (vol_20d_avg and last_volume and vol_20d_avg > 0) else None
 
     def _flag() -> str:
