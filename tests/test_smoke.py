@@ -39,6 +39,13 @@ def test_end_to_end():
     # Paper position round trip
     paper.open_position("TEST", 100, 10.0, notes="unit")
     assert any(p["ticker"] == "TEST" for p in paper.list_positions())
+
+    # Re-opening an already-open ticker must NOT wipe its original cost basis
+    first = next(p for p in paper.list_positions() if p["ticker"] == "TEST")
+    paper.open_position("TEST", 999, 42.0, notes="should-not-apply")
+    again = next(p for p in paper.list_positions() if p["ticker"] == "TEST")
+    assert again["cost_basis"] == first["cost_basis"] == 10.0
+    assert again["opened_at"] == first["opened_at"]
     paper.close_position("TEST")
 
     # Drawdown evaluator does not blow up on empty set

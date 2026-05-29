@@ -10,10 +10,24 @@ from . import db
 def open_position(ticker: str, shares: float, cost_basis: float, notes: str = "") -> None:
     db.init()
     with db.connect() as cx:
+        # Idempotent open. If an OPEN position already exists for this ticker we
+        # leave it untouched (preserving opened_at, high_water and original cost
+        # basis) so re-running `paper sync` doesn't churn the position. Only a
+        # previously CLOSED ticker gets re-opened fresh.
         cx.execute(
-            "INSERT OR REPLACE INTO positions "
+            "INSERT INTO positions "
             "(ticker, cost_basis, shares, high_water, last_price, pnl_pct, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(ticker) DO UPDATE SET "
+            "  opened_at = datetime('now'), "
+            "  cost_basis = excluded.cost_basis, "
+            "  shares = excluded.shares, "
+            "  high_water = excluded.high_water, "
+            "  last_price = excluded.last_price, "
+            "  pnl_pct = 0.0, "
+            "  closed_at = NULL, "
+            "  notes = excluded.notes "
+            "WHERE positions.closed_at IS NOT NULL",
             (ticker.upper(), cost_basis, shares, cost_basis, cost_basis, 0.0, notes),
         )
 
