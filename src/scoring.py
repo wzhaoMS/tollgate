@@ -69,6 +69,30 @@ def _insider_signal(cx, ticker: str, lookback_days: int = 180) -> str:
     return "watch"
 
 
+def _liquidity(cx, ticker: str) -> str:
+    """Average daily dollar volume over the last ~20 trading days.
+
+    pass    => >= $10M/day (can build/exit a position without moving the tape)
+    watch   => >= $1M/day  (tradeable but size-constrained)
+    fail    => <  $1M/day  (illiquid; execution risk dominates)
+    unknown => no price/volume data
+    """
+    rows = cx.execute(
+        "SELECT close, volume FROM prices WHERE ticker = ? "
+        "AND close IS NOT NULL AND volume IS NOT NULL ORDER BY date DESC LIMIT 20",
+        (ticker,),
+    ).fetchall()
+    dollar_vols = [r["close"] * r["volume"] for r in rows if r["close"] and r["volume"]]
+    if not dollar_vols:
+        return "unknown"
+    avg = sum(dollar_vols) / len(dollar_vols)
+    if avg >= 10_000_000:
+        return "pass"
+    if avg >= 1_000_000:
+        return "watch"
+    return "fail"
+
+
 # Government-backstop keywords (CHIPS Act, DoE, DPA Title III, ITC, etc.).
 _GOVT_KEYWORDS = (
     "chips act", "chips and science", "department of energy", "doe grant",
@@ -154,8 +178,8 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     # Step 6: Insider activity from harvested Form 4 transactions.
     out["step_6"] = _insider_signal(cx, row["ticker"])
 
-    # Step 7: Liquidity — needs market data; default unknown
-    out["step_7"] = "unknown"
+    # Step 7: Liquidity — average daily dollar volume from the prices table.
+    out["step_7"] = _liquidity(cx, row["ticker"])
 
     # Step 8: Catalyst quality (catalyst_score field, threshold 7)
     cs = row.get("catalyst_score")
@@ -173,8 +197,9 @@ def score_row(cx, row: dict[str, Any]) -> dict[str, Any]:
     if hard_fails:
         overall = "Pass"
     elif out["step_1"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
-        # Strong setup. Insiders actively selling tempers conviction down to Watch.
-        overall = "Watch" if out["step_6"] == "fail" else "Buy"
+        # Strong setup. Insiders actively selling, or an illiquid tape we can't
+        # build size in, tempers conviction down to Watch.
+        overall = "Watch" if out["step_6"] == "fail" or out["step_7"] == "fail" else "Buy"
     elif out["step_6"] == "pass" and out["step_8"] == "pass" and out["step_9"] == "pass":
         # Not A-grade evidence yet, but insiders are buying alongside a live
         # catalyst on a near-term clock — worth a Watch upgrade from Skip.
